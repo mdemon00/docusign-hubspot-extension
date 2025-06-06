@@ -1,0 +1,21 @@
+{
+  "name": "DocuSign Integration",
+  "description": "View and manage DocuSign envelopes within HubSpot",
+  "uid": "DocuSign_Integration",
+  "scopes": [
+    "crm.objects.deals.read",
+    "crm.objects.companies.read",
+    "crm.objects.contacts.read",
+    "crm.objects.custom.read"
+  ],
+  "public": false,
+  "extensions": {
+    "crm": {
+      "cards": [
+        {
+          "file": "extensions/docusign-card.json"
+        }
+      ]
+    }
+  }
+}

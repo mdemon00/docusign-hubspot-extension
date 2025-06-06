@@ -1,0 +1,16 @@
+{
+  "type": "crm-card",
+  "data": {
+    "title": "DocuSign Envelopes",
+    "uid": "DocuSign_Envelopes_Card", 
+    "location": "crm.record.tab",
+    "module": {
+      "file": "DocusignViewer.jsx"
+    },
+    "objectTypes": [
+      { "name": "deals" },
+      { "name": "companies" },
+      { "name": "contacts" }
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "docusign-hubspot-extension",
+  "version": "1.0.0",
+  "description": "HubSpot UI Extension for DocuSign Integration",
+  "main": "index.js",
+  "scripts": {
+    "dev": "hs project dev",
+    "build": "hs project build",
+    "deploy": "hs project deploy"
+  },
+  "keywords": [
+    "hubspot",
+    "ui-extension",
+    "docusign",
+    "envelopes"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}
