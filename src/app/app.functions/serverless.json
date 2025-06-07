@@ -1,20 +1,13 @@
 {
   "appFunctions": {
     "docusignAuth": {
-      "file": "docusignAuth.js",
-      "secrets": [
-        "DOCUSIGN_INTEGRATION_KEY",
-        "DOCUSIGN_USER_ID",
-        "DOCUSIGN_PRIVATE_KEY"
-      ]
+      "file": "docusignAuth.js"
     },
     "listDocusignEnvelopes": {
-      "file": "listDocusignEnvelopes.js",
-      "secrets": []
+      "file": "listDocusignEnvelopes.js"
     },
     "getDocusignAccount": {
-      "file": "getDocusignAccount.js",
-      "secrets": []
+      "file": "getDocusignAccount.js"
     }
   }
 }
