@@ -1,5 +1,5 @@
 // src/app/app.functions/listDocusignEnvelopes.js
-// Enhanced DocuSign envelopes listing with better error handling
+// Fixed DocuSign envelopes listing with required from_date parameter
 
 const axios = require('axios');
 
@@ -39,15 +39,25 @@ exports.main = async (context) => {
       order: order
     });
 
+    // DocuSign requires either from_date OR envelope_ids/folder_ids/transaction_ids
+    // If no fromDate provided, set a default to get recent envelopes (last 30 days)
+    let effectiveFromDate = fromDate;
+    if (!effectiveFromDate) {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      effectiveFromDate = thirtyDaysAgo.toISOString();
+      console.log(`📅 No from_date provided, using default: ${effectiveFromDate}`);
+    }
+
+    // Add the required from_date parameter
+    queryParams.append('from_date', effectiveFromDate);
+
     // Add status filter (if not 'all')
     if (status && status !== 'all') {
       queryParams.append('status', status);
     }
 
-    // Add date range filters
-    if (fromDate) {
-      queryParams.append('from_date', fromDate);
-    }
+    // Add to_date if provided
     if (toDate) {
       queryParams.append('to_date', toDate);
     }
@@ -206,7 +216,7 @@ exports.main = async (context) => {
         filters: {
           status,
           searchTerm,
-          fromDate,
+          fromDate: effectiveFromDate, // Return the actual date used
           toDate,
           orderBy,
           order
