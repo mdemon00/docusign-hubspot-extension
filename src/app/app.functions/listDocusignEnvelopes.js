@@ -1,5 +1,5 @@
 // src/app/app.functions/listDocusignEnvelopes.js
-// Fetch DocuSign envelopes with pagination and filtering
+// Enhanced DocuSign envelopes listing with better error handling
 
 const axios = require('axios');
 
@@ -20,14 +20,7 @@ exports.main = async (context) => {
     } = context.parameters;
 
     console.log('📋 Fetching DocuSign envelopes with parameters:', {
-      page,
-      limit,
-      status,
-      searchTerm,
-      fromDate,
-      toDate,
-      orderBy,
-      order
+      page, limit, status, searchTerm, fromDate, toDate, orderBy, order
     });
 
     // Validate required parameters
@@ -69,64 +62,123 @@ exports.main = async (context) => {
     
     console.log('🔗 DocuSign API URL:', apiUrl);
 
-    // Make API request
+    // Make API request with enhanced error handling
     const response = await axios.get(apiUrl, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Accept': 'application/json'
+      },
+      timeout: 30000, // 30 second timeout
+      validateStatus: function (status) {
+        return status < 500; // Resolve only if the status code is less than 500
       }
     });
+
+    // Handle non-200 responses
+    if (response.status !== 200) {
+      console.error(`❌ DocuSign API returned status ${response.status}:`, response.data);
+      
+      if (response.status === 401) {
+        return {
+          status: "AUTH_ERROR",
+          message: "DocuSign authentication expired. Please re-authenticate.",
+          errorDetails: response.data,
+          timestamp: Date.now()
+        };
+      } else if (response.status === 403) {
+        return {
+          status: "PERMISSION_ERROR", 
+          message: "Insufficient permissions to access DocuSign envelopes.",
+          errorDetails: response.data,
+          timestamp: Date.now()
+        };
+      } else if (response.status === 429) {
+        return {
+          status: "RATE_LIMIT_ERROR",
+          message: "DocuSign API rate limit exceeded. Please try again later.",
+          errorDetails: response.data,
+          timestamp: Date.now()
+        };
+      } else {
+        throw new Error(`DocuSign API error: ${response.status} - ${response.statusText}`);
+      }
+    }
 
     const data = response.data;
     
     console.log(`📦 Retrieved ${data.envelopes?.length || 0} envelopes`);
 
-    // Process envelope data
-    const processedEnvelopes = (data.envelopes || []).map(envelope => ({
-      // Basic envelope information
-      envelopeId: envelope.envelopeId,
-      emailSubject: envelope.emailSubject || 'No Subject',
-      status: envelope.status,
-      statusDateTime: envelope.statusChangedDateTime,
-      
-      // Sender information
-      sender: envelope.sender ? {
-        userName: envelope.sender.userName || 'Unknown',
-        email: envelope.sender.email || ''
-      } : {
-        userName: 'Unknown Sender',
-        email: ''
-      },
-      
-      // Dates
-      createdDateTime: envelope.createdDateTime,
-      lastModifiedDateTime: envelope.lastModifiedDateTime,
-      sentDateTime: envelope.sentDateTime,
-      completedDateTime: envelope.completedDateTime,
-      
-      // Recipients count
-      recipientsCount: getRecipientsCount(envelope),
-      
-      // Additional metadata
-      envelopeUri: envelope.envelopeUri,
-      documentsCount: envelope.documentsCount || 0,
-      
-      // Custom fields (if any)
-      customFields: envelope.customFields || {},
-      
-      // Template information (if used)
-      templatesUri: envelope.templatesUri,
-      
-      // Formatted display data
-      displayData: {
-        statusColor: getStatusColor(envelope.status),
-        statusLabel: getStatusLabel(envelope.status),
-        recipientsText: getRecipientsText(envelope),
-        lastUpdated: formatDate(envelope.lastModifiedDateTime),
-        createDate: formatDate(envelope.createdDateTime),
-        senderDisplay: envelope.sender?.userName || 'Unknown'
+    // Process envelope data with enhanced error handling
+    const processedEnvelopes = (data.envelopes || []).map(envelope => {
+      try {
+        return {
+          // Basic envelope information
+          envelopeId: envelope.envelopeId,
+          emailSubject: envelope.emailSubject || 'No Subject',
+          status: envelope.status,
+          statusDateTime: envelope.statusChangedDateTime,
+          
+          // Sender information with safe access
+          sender: envelope.sender ? {
+            userName: envelope.sender.userName || 'Unknown',
+            email: envelope.sender.email || ''
+          } : {
+            userName: 'Unknown Sender',
+            email: ''
+          },
+          
+          // Dates
+          createdDateTime: envelope.createdDateTime,
+          lastModifiedDateTime: envelope.lastModifiedDateTime,
+          sentDateTime: envelope.sentDateTime,
+          completedDateTime: envelope.completedDateTime,
+          
+          // Recipients count
+          recipientsCount: getRecipientsCount(envelope),
+          
+          // Additional metadata
+          envelopeUri: envelope.envelopeUri,
+          documentsCount: envelope.documentsCount || 0,
+          
+          // Custom fields (if any)
+          customFields: envelope.customFields || {},
+          
+          // Template information (if used)
+          templatesUri: envelope.templatesUri,
+          
+          // Formatted display data
+          displayData: {
+            statusColor: getStatusColor(envelope.status),
+            statusLabel: getStatusLabel(envelope.status),
+            recipientsText: getRecipientsText(envelope),
+            lastUpdated: formatDate(envelope.lastModifiedDateTime),
+            createDate: formatDate(envelope.createdDateTime),
+            senderDisplay: envelope.sender?.userName || 'Unknown'
+          }
+        };
+      } catch (processingError) {
+        console.warn(`⚠️ Error processing envelope ${envelope.envelopeId}:`, processingError.message);
+        // Return a minimal envelope object if processing fails
+        return {
+          envelopeId: envelope.envelopeId || 'unknown',
+          emailSubject: 'Error processing envelope',
+          status: envelope.status || 'unknown',
+          statusDateTime: envelope.statusChangedDateTime,
+          sender: { userName: 'Unknown', email: '' },
+          createdDateTime: envelope.createdDateTime,
+          lastModifiedDateTime: envelope.lastModifiedDateTime,
+          recipientsCount: 0,
+          displayData: {
+            statusColor: '#95a5a6',
+            statusLabel: 'Unknown',
+            recipientsText: 'Unknown',
+            lastUpdated: formatDate(envelope.lastModifiedDateTime),
+            createDate: formatDate(envelope.createdDateTime),
+            senderDisplay: 'Unknown'
+          }
+        };
       }
-    }));
+    });
 
     // Calculate pagination metadata
     const totalCount = parseInt(data.totalSetSize) || 0;
@@ -166,10 +218,12 @@ exports.main = async (context) => {
   } catch (error) {
     console.error("❌ Error fetching DocuSign envelopes:", error);
     
-    // Handle specific DocuSign API errors
+    // Enhanced error handling
     if (error.response) {
       const status = error.response.status;
       const errorData = error.response.data;
+      
+      console.error(`❌ HTTP ${status} Error:`, errorData);
       
       if (status === 401) {
         return {
@@ -192,13 +246,38 @@ exports.main = async (context) => {
           errorDetails: errorData,
           timestamp: Date.now()
         };
+      } else if (status === 404) {
+        return {
+          status: "NOT_FOUND_ERROR",
+          message: "DocuSign account or endpoint not found. Please check your configuration.",
+          errorDetails: errorData,
+          timestamp: Date.now()
+        };
       }
+    } else if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+      return {
+        status: "NETWORK_ERROR",
+        message: "Network error connecting to DocuSign. Please check your internet connection.",
+        errorDetails: { code: error.code, message: error.message },
+        timestamp: Date.now()
+      };
+    } else if (error.code === 'ETIMEDOUT') {
+      return {
+        status: "TIMEOUT_ERROR",
+        message: "Request to DocuSign timed out. Please try again.",
+        errorDetails: { code: error.code, message: error.message },
+        timestamp: Date.now()
+      };
     }
     
     return {
       status: "ERROR",
       message: `Failed to fetch envelopes: ${error.message}`,
-      errorDetails: error.toString(),
+      errorDetails: {
+        message: error.message,
+        code: error.code,
+        type: error.constructor.name
+      },
       timestamp: Date.now()
     };
   }
