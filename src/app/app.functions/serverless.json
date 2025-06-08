@@ -8,6 +8,9 @@
     },
     "getDocusignAccount": {
       "file": "getDocusignAccount.js"
+    },
+    "sendPartnershipAgreement": {
+      "file": "sendPartnershipAgreement.js"
     }
   }
 }

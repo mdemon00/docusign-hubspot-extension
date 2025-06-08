@@ -1,4 +1,4 @@
-// DocuSign Viewer Main Component
+// DocuSign Viewer Main Component with Partnership Send functionality
 import React, { useState, useEffect } from "react";
 import {
   Divider, Button, Text, Flex, hubspot, Heading, Box, Alert, LoadingSpinner, Link
@@ -32,15 +32,47 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
     orderBy: 'last_modified', order: 'desc'
   });
 
-  const [alertMessage, setAlertMessage] = useState("");
+  // Partnership send state
+  const [partnershipState, setPartnershipState] = useState({
+    sending: false,
+    lastResult: null
+  });
 
-  useEffect(() => { authenticateWithDocusign(); }, []);
+  // Company context from HubSpot
+  const [companyContext, setCompanyContext] = useState(null);
+
+  useEffect(() => { 
+    authenticateWithDocusign(); 
+    detectCompanyContext();
+  }, []);
   
   useEffect(() => {
     if (authState.isAuthenticated && authState.accessToken) {
       loadEnvelopes();
     }
   }, [authState.isAuthenticated, authState.accessToken, filters, envelopesState.pagination.currentPage]);
+
+  // Detect if we're in a company context
+  const detectCompanyContext = () => {
+    try {
+      // Check if we're on a company record page
+      if (context?.crm?.objectId && context?.crm?.objectTypeId === '0-2') {
+        setCompanyContext({
+          companyId: context.crm.objectId,
+          objectType: 'company'
+        });
+      }
+      // You can also check for deals or contacts and get associated company
+      else if (context?.crm?.objectId) {
+        // For now, we'll only support direct company context
+        // In the future, you could add logic to fetch associated company from deals/contacts
+        setCompanyContext(null);
+      }
+    } catch (error) {
+      console.warn('Could not detect company context:', error);
+      setCompanyContext(null);
+    }
+  };
 
   const authenticateWithDocusign = async () => {
     setAuthState(prev => ({ ...prev, isAuthenticating: true, error: null }));
@@ -71,7 +103,7 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
         accessToken: null, account: null, baseUrl: null,
         error: error.message, consentUrl: null
       });
-      setAlertMessage({ message: `❌ Authentication Error: ${error.message}`, variant: "error" });
+      sendAlert({ message: `❌ Authentication Error: ${error.message}`, variant: "error" });
     }
   };
 
@@ -96,13 +128,67 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
         }));
       } else if (response?.status === "AUTH_ERROR") {
         setAuthState(prev => ({ ...prev, isAuthenticated: false, accessToken: null }));
-        setAlertMessage({ message: "🔄 Session expired. Please re-authenticate.", variant: "warning" });
+        sendAlert({ message: "🔄 Session expired. Please re-authenticate.", variant: "warning" });
       } else {
         throw new Error(response?.response?.message || "Failed to load envelopes");
       }
     } catch (error) {
       setEnvelopesState(prev => ({ ...prev, loading: false, error: error.message }));
-      setAlertMessage({ message: `❌ Failed to load envelopes: ${error.message}`, variant: "error" });
+      sendAlert({ message: `❌ Failed to load envelopes: ${error.message}`, variant: "error" });
+    }
+  };
+
+  // Handle partnership agreement send
+  const handleSendPartnership = async (companyId) => {
+    if (!companyId) {
+      sendAlert({ message: "❌ No company ID available", variant: "error" });
+      return;
+    }
+
+    setPartnershipState(prev => ({ ...prev, sending: true }));
+
+    try {
+      const response = await runServerless({
+        name: "sendPartnershipAgreement",
+        parameters: { companyId }
+      });
+
+      setPartnershipState(prev => ({ 
+        ...prev, 
+        sending: false, 
+        lastResult: response 
+      }));
+
+      if (response?.status === "SUCCESS") {
+        const companyName = response.response?.data?.companyName || 'Company';
+        const envelopeId = response.response?.data?.envelopeId;
+        
+        if (envelopeId) {
+          sendAlert({ 
+            message: `✅ Partnership Agreement sent successfully for ${companyName} (${envelopeId})`, 
+            variant: "success" 
+          });
+          // Refresh envelopes to show the new one
+          loadEnvelopes(1);
+        } else {
+          sendAlert({ 
+            message: `✅ Partnership process completed for ${companyName} - check workflow for details`, 
+            variant: "success" 
+          });
+        }
+      } else {
+        const errorMessage = response?.response?.message || response?.message || "Unknown error";
+        sendAlert({ 
+          message: `⚠️ Partnership send completed with issues: ${errorMessage}`, 
+          variant: "warning" 
+        });
+      }
+    } catch (error) {
+      setPartnershipState(prev => ({ ...prev, sending: false }));
+      sendAlert({ 
+        message: `❌ Failed to send partnership agreement: ${error.message}`, 
+        variant: "error" 
+      });
     }
   };
 
@@ -154,6 +240,11 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
           <Box>
             <Heading>DocuSign Integration</Heading>
             <Text variant="microcopy">View and manage DocuSign envelopes</Text>
+            {companyContext && (
+              <Text variant="microcopy" format={{ color: 'success' }}>
+                📋 Company context detected (ID: {companyContext.companyId})
+              </Text>
+            )}
           </Box>
           <Box>
             {authState.isAuthenticated ? (
@@ -181,8 +272,15 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
         <Box>
           <SearchFilter filters={filters} onFilterChange={handleFilterChange} disabled={envelopesState.loading} />
           <Box marginTop="medium">
-            <EnvelopeTable envelopes={envelopesState.envelopes} loading={envelopesState.loading} 
-                          error={envelopesState.error} onRefresh={() => loadEnvelopes(1)} />
+            <EnvelopeTable 
+              envelopes={envelopesState.envelopes} 
+              loading={envelopesState.loading} 
+              error={envelopesState.error} 
+              onRefresh={() => loadEnvelopes(1)}
+              onSendPartnership={handleSendPartnership}
+              partnershipSending={partnershipState.sending}
+              companyContext={companyContext}
+            />
           </Box>
           {envelopesState.envelopes.length > 0 && (
             <Box marginTop="medium">
@@ -190,12 +288,21 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
                          disabled={envelopesState.loading} />
             </Box>
           )}
+          
+          {/* Partnership send status */}
+          {partnershipState.lastResult && (
+            <Box marginTop="medium">
+              <Alert variant={partnershipState.lastResult.status === "SUCCESS" ? "success" : "info"}>
+                <Text variant="microcopy">
+                  Last partnership send: {partnershipState.lastResult.message || 'Completed - check workflow for details'}
+                </Text>
+              </Alert>
+            </Box>
+          )}
         </Box>
       ) : (
         renderAuthenticationError()
       )}
-
-      {alertMessage && <Alert variant={alertMessage.variant}>{alertMessage.message}</Alert>}
     </Flex>
   );
 };
