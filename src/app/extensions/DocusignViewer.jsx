@@ -1,12 +1,16 @@
-// DocuSign Viewer Main Component with Partnership Send functionality
+// src/app/extensions/DocusignViewer.jsx
+// Redesigned User-Friendly DocuSign Viewer with improved UX
 import React, { useState, useEffect } from "react";
 import {
-  Divider, Button, Text, Flex, hubspot, Heading, Box, Alert, LoadingSpinner, Link
+  Divider, Button, Text, Flex, hubspot, Heading, Box, Alert, LoadingSpinner, 
+  Link, Tile, LoadingButton
 } from "@hubspot/ui-extensions";
 
 import EnvelopeTable from './components/EnvelopeTable.jsx';
-import SearchFilter from './components/SearchFilter.jsx';
-import Pagination from './components/Pagination.jsx';
+import QuickFilters from './components/QuickFilters.jsx';
+import AdvancedFilters from './components/AdvancedFilters.jsx';
+import CompanyActionPanel from './components/CompanyActionPanel.jsx';
+import ConnectionStatus from './components/ConnectionStatus.jsx';
 
 hubspot.extend(({ context, runServerlessFunction, actions }) => (
   <DocusignViewerExtension
@@ -17,28 +21,33 @@ hubspot.extend(({ context, runServerlessFunction, actions }) => (
 ));
 
 const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
+  // Authentication State
   const [authState, setAuthState] = useState({
     isAuthenticated: false, isAuthenticating: false, accessToken: null,
     account: null, baseUrl: null, error: null, consentUrl: null
   });
 
+  // Envelopes State
   const [envelopesState, setEnvelopesState] = useState({
     envelopes: [], loading: false, error: null,
     pagination: { currentPage: 1, totalPages: 0, totalCount: 0, limit: 10, hasNextPage: false, hasPreviousPage: false }
   });
 
+  // UI State
+  const [uiState, setUiState] = useState({
+    showAdvancedFilters: false,
+    partnershipSending: false,
+    selectedView: "recent", // recent, all, sent, completed
+    showFilters: false
+  });
+
+  // Filters State
   const [filters, setFilters] = useState({
     status: 'all', searchTerm: '', fromDate: null, toDate: null,
     orderBy: 'last_modified', order: 'desc'
   });
 
-  // Partnership send state
-  const [partnershipState, setPartnershipState] = useState({
-    sending: false,
-    lastResult: null
-  });
-
-  // Company context from HubSpot
+  // Company Context Detection
   const [companyContext, setCompanyContext] = useState(null);
 
   useEffect(() => { 
@@ -55,22 +64,18 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
   // Detect if we're in a company context
   const detectCompanyContext = () => {
     try {
-      // Check if we're on a company record page
       if (context?.crm?.objectId && context?.crm?.objectTypeId === '0-2') {
         setCompanyContext({
           companyId: context.crm.objectId,
-          objectType: 'company'
+          objectType: 'company',
+          hasContext: true
         });
-      }
-      // You can also check for deals or contacts and get associated company
-      else if (context?.crm?.objectId) {
-        // For now, we'll only support direct company context
-        // In the future, you could add logic to fetch associated company from deals/contacts
-        setCompanyContext(null);
+      } else {
+        setCompanyContext({ hasContext: false });
       }
     } catch (error) {
       console.warn('Could not detect company context:', error);
-      setCompanyContext(null);
+      setCompanyContext({ hasContext: false });
     }
   };
 
@@ -145,7 +150,7 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
       return;
     }
 
-    setPartnershipState(prev => ({ ...prev, sending: true }));
+    setUiState(prev => ({ ...prev, partnershipSending: true }));
 
     try {
       const response = await runServerless({
@@ -153,67 +158,39 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
         parameters: { companyId }
       });
 
-      setPartnershipState(prev => ({ 
-        ...prev, 
-        sending: false, 
-        lastResult: response 
-      }));
+      setUiState(prev => ({ ...prev, partnershipSending: false }));
 
-      // Check if the actual process was successful (not just that the function ran)
+      // Enhanced response handling
       const responseData = response?.response?.data || {};
       const actualSuccess = responseData.docusignReady && responseData.envelopeId;
 
       if (response?.status === "SUCCESS" && actualSuccess) {
-        // True success - envelope was created
         const companyName = responseData.companyName || 'Company';
         const envelopeId = responseData.envelopeId;
         
         sendAlert({ 
-          message: `✅ Partnership Agreement sent successfully for ${companyName} (${envelopeId})`, 
+          message: `✅ Partnership Agreement sent successfully for ${companyName}`, 
           variant: "success" 
         });
-        // Refresh envelopes to show the new one
-        loadEnvelopes(1);
+        loadEnvelopes(1); // Refresh to show new envelope
       } else if (response?.status === "SUCCESS" && !responseData.docusignReady) {
-        // Function ran but validation failed
         const companyName = responseData.companyName || 'Company';
         const missingFields = responseData.missingProperties || 'Unknown fields';
         const missingCount = responseData.missingPropertiesCount || 0;
         
         sendAlert({ 
-          message: `❌ DocuSign Cannot Be Sent for ${companyName}\n\nMissing ${missingCount} required field${missingCount !== 1 ? 's' : ''}:\n${missingFields}\n\nPlease complete these fields and try again.\nWebhook sent to create notification task.`, 
+          message: `❌ Cannot send DocuSign for ${companyName}. Missing ${missingCount} required field${missingCount !== 1 ? 's' : ''}: ${missingFields}`, 
           variant: "error" 
         });
-      } else if (response?.status === "ERROR") {
-        // Function error or validation failed
-        const companyName = responseData.companyName || 'Company';
-        const errorMessage = response?.response?.message || response?.message || "Unknown error";
-        const missingFields = responseData.missingProperties;
-        
-        if (missingFields) {
-          // Validation error
-          const missingCount = responseData.missingPropertiesCount || 0;
-          sendAlert({ 
-            message: `❌ DocuSign Cannot Be Sent for ${companyName}\n\nMissing ${missingCount} required field${missingCount !== 1 ? 's' : ''}:\n${missingFields}\n\nPlease complete these fields and try again.\nWebhook sent to create notification task.`, 
-            variant: "error" 
-          });
-        } else {
-          // Other error
-          sendAlert({ 
-            message: `❌ Partnership Agreement Error: ${errorMessage}\n\nWebhook sent to process notifications.`, 
-            variant: "error" 
-          });
-        }
       } else {
-        // Unexpected response format
-        const errorMessage = response?.response?.message || response?.message || "Unexpected response format";
+        const errorMessage = response?.response?.message || response?.message || "Unknown error";
         sendAlert({ 
-          message: `⚠️ Partnership process completed with unexpected result: ${errorMessage}\n\nWebhook sent - check workflow for details.`, 
-          variant: "warning" 
+          message: `❌ Partnership Agreement Error: ${errorMessage}`, 
+          variant: "error" 
         });
       }
     } catch (error) {
-      setPartnershipState(prev => ({ ...prev, sending: false }));
+      setUiState(prev => ({ ...prev, partnershipSending: false }));
       sendAlert({ 
         message: `❌ Failed to send partnership agreement: ${error.message}`, 
         variant: "error" 
@@ -226,22 +203,34 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
     setEnvelopesState(prev => ({ ...prev, pagination: { ...prev.pagination, currentPage: 1 } }));
   };
 
-  const handlePageChange = (newPage) => {
-    setEnvelopesState(prev => ({ ...prev, pagination: { ...prev.pagination, currentPage: newPage } }));
+  const handleQuickFilterChange = (filterType) => {
+    const quickFilterMap = {
+      recent: { status: 'all', orderBy: 'last_modified', order: 'desc' },
+      sent: { status: 'sent' },
+      completed: { status: 'completed' },
+      all: { status: 'all' }
+    };
+    
+    setUiState(prev => ({ ...prev, selectedView: filterType }));
+    handleFilterChange(quickFilterMap[filterType] || {});
   };
 
   const renderAuthenticationError = () => (
-    <Box marginTop="medium">
+    <Tile>
       <Alert variant="error">
         <Flex direction="column" gap="small">
-          <Text>❌ DocuSign Authentication Required</Text>
+          <Text format={{ fontWeight: "bold" }}>❌ DocuSign Authentication Required</Text>
           {authState.consentUrl ? (
             <Box>
               <Text variant="microcopy" marginBottom="small">
                 Please authorize this application to access your DocuSign account:
               </Text>
               <Flex gap="small">
-                <Link href={authState.consentUrl} external>🔗 Authorize DocuSign Access</Link>
+                <Link href={authState.consentUrl} external>
+                  <Button variant="primary" size="xs">
+                    🔗 Authorize DocuSign Access
+                  </Button>
+                </Link>
                 <Button variant="secondary" size="xs" onClick={authenticateWithDocusign} 
                         disabled={authState.isAuthenticating}>
                   ↻ Retry After Authorization
@@ -258,37 +247,21 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
           )}
         </Flex>
       </Alert>
-    </Box>
+    </Tile>
   );
 
   return (
-    <Flex direction="column" gap="large">
-      <Box>
-        <Divider />
-        <Flex justify="space-between" align="center">
+    <Box>
+      {/* Header Section */}
+      <Box marginBottom="large">
+        <Flex justify="space-between" align="center" marginBottom="medium">
           <Box>
             <Heading>DocuSign Integration</Heading>
-            <Text variant="microcopy">View and manage DocuSign envelopes</Text>
-            {companyContext && (
-              <Text variant="microcopy" format={{ color: 'success' }}>
-                📋 Company context detected (ID: {companyContext.companyId})
-              </Text>
-            )}
+            <Text variant="microcopy" format={{ color: "medium" }}>
+              Manage partnership agreements and envelopes
+            </Text>
           </Box>
-          <Box>
-            {authState.isAuthenticated ? (
-              <Flex direction="column" align="end">
-                <Text variant="microcopy" format={{ color: 'success', fontWeight: "bold" }}>✅ Connected</Text>
-                <Text variant="microcopy" format={{ color: 'medium' }}>
-                  {authState.account?.accountName || 'DocuSign Account'}
-                </Text>
-              </Flex>
-            ) : (
-              <Text variant="microcopy" format={{ color: authState.isAuthenticating ? 'warning' : 'error' }}>
-                {authState.isAuthenticating ? "🔄 Connecting..." : "❌ Not Connected"}
-              </Text>
-            )}
-          </Box>
+          <ConnectionStatus authState={authState} />
         </Flex>
         <Divider />
       </Box>
@@ -297,42 +270,86 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
         <Box padding="large" style={{ textAlign: 'center' }}>
           <LoadingSpinner label="Connecting to DocuSign..." />
         </Box>
-      ) : authState.isAuthenticated ? (
-        <Box>
-          <SearchFilter filters={filters} onFilterChange={handleFilterChange} disabled={envelopesState.loading} />
-          <Box marginTop="medium">
-            <EnvelopeTable 
-              envelopes={envelopesState.envelopes} 
-              loading={envelopesState.loading} 
-              error={envelopesState.error} 
-              onRefresh={() => loadEnvelopes(1)}
-              onSendPartnership={handleSendPartnership}
-              partnershipSending={partnershipState.sending}
-              companyContext={companyContext}
-            />
-          </Box>
-          {envelopesState.envelopes.length > 0 && (
-            <Box marginTop="medium">
-              <Pagination pagination={envelopesState.pagination} onPageChange={handlePageChange} 
-                         disabled={envelopesState.loading} />
-            </Box>
-          )}
-          
-          {/* Partnership send status */}
-          {partnershipState.lastResult && (
-            <Box marginTop="medium">
-              <Alert variant={partnershipState.lastResult.status === "SUCCESS" ? "success" : "info"}>
-                <Text variant="microcopy">
-                  Last partnership send: {partnershipState.lastResult.message || 'Completed - check workflow for details'}
-                </Text>
-              </Alert>
-            </Box>
-          )}
-        </Box>
-      ) : (
+      ) : !authState.isAuthenticated ? (
         renderAuthenticationError()
+      ) : (
+        <Box>
+          {/* Company Context & Primary Actions */}
+          {companyContext?.hasContext && (
+            <CompanyActionPanel 
+              companyContext={companyContext}
+              onSendPartnership={handleSendPartnership}
+              partnershipSending={uiState.partnershipSending}
+            />
+          )}
+
+          {/* Quick Stats & Filters */}
+          <Tile marginBottom="large">
+            <Flex justify="space-between" align="center" marginBottom="medium">
+              <Text format={{ fontWeight: "bold" }}>
+                📊 Envelope Overview ({envelopesState.pagination.totalCount || 0})
+              </Text>
+              <Flex gap="small">
+                <Button 
+                  variant="transparent" 
+                  size="xs"
+                  onClick={() => setUiState(prev => ({ 
+                    ...prev, showFilters: !prev.showFilters 
+                  }))}
+                >
+                  🔍 {uiState.showFilters ? 'Hide' : 'Show'} Filters
+                </Button>
+                <Button variant="secondary" size="xs" onClick={() => loadEnvelopes(1)}>
+                  🔄 Refresh
+                </Button>
+              </Flex>
+            </Flex>
+
+            <QuickFilters 
+              selectedView={uiState.selectedView}
+              onFilterChange={handleQuickFilterChange}
+              envelopes={envelopesState.envelopes}
+            />
+
+            {uiState.showFilters && (
+              <AdvancedFilters 
+                filters={filters}
+                onFilterChange={handleFilterChange}
+                disabled={envelopesState.loading}
+              />
+            )}
+          </Tile>
+
+          {/* Envelopes List */}
+          <EnvelopeTable 
+            envelopes={envelopesState.envelopes}
+            loading={envelopesState.loading}
+            error={envelopesState.error}
+            pagination={envelopesState.pagination}
+            onRefresh={() => loadEnvelopes(1)}
+            onPageChange={(newPage) => setEnvelopesState(prev => ({ 
+              ...prev, pagination: { ...prev.pagination, currentPage: newPage } 
+            }))}
+          />
+
+          {/* Help Footer */}
+          <Tile marginTop="large">
+            <Flex justify="space-between" align="center">
+              <Box>
+                <Text variant="microcopy" format={{ color: "medium" }}>
+                  💡 Need help? Check our documentation or contact support
+                </Text>
+              </Box>
+              <Box>
+                <Text variant="microcopy" format={{ color: "medium" }}>
+                  Last updated: {new Date().toLocaleTimeString()}
+                </Text>
+              </Box>
+            </Flex>
+          </Tile>
+        </Box>
       )}
-    </Flex>
+    </Box>
   );
 };
 
