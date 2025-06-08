@@ -448,11 +448,15 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
     // Return response for UI
     return {
       status: webhookPayload.success ? "SUCCESS" : "ERROR",
-      message: webhookPayload.message,
+      message: webhookPayload.success 
+        ? webhookPayload.message 
+        : `Missing required fields: ${webhookPayload.missingProperties}`,
       data: {
         companyName: webhookPayload.companyName,
         docusignReady: webhookPayload.docusignReady,
         envelopeId: webhookPayload.envelopeId,
+        missingProperties: webhookPayload.missingProperties,
+        missingPropertiesCount: webhookPayload.missingPropertiesCount,
         webhookSent: true
       },
       timestamp: Date.now()

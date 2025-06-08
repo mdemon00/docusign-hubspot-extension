@@ -159,27 +159,56 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
         lastResult: response 
       }));
 
-      if (response?.status === "SUCCESS") {
-        const companyName = response.response?.data?.companyName || 'Company';
-        const envelopeId = response.response?.data?.envelopeId;
+      // Check if the actual process was successful (not just that the function ran)
+      const responseData = response?.response?.data || {};
+      const actualSuccess = responseData.docusignReady && responseData.envelopeId;
+
+      if (response?.status === "SUCCESS" && actualSuccess) {
+        // True success - envelope was created
+        const companyName = responseData.companyName || 'Company';
+        const envelopeId = responseData.envelopeId;
         
-        if (envelopeId) {
+        sendAlert({ 
+          message: `✅ Partnership Agreement sent successfully for ${companyName} (${envelopeId})`, 
+          variant: "success" 
+        });
+        // Refresh envelopes to show the new one
+        loadEnvelopes(1);
+      } else if (response?.status === "SUCCESS" && !responseData.docusignReady) {
+        // Function ran but validation failed
+        const companyName = responseData.companyName || 'Company';
+        const missingFields = responseData.missingProperties || 'Unknown fields';
+        const missingCount = responseData.missingPropertiesCount || 0;
+        
+        sendAlert({ 
+          message: `❌ DocuSign Cannot Be Sent for ${companyName}\n\nMissing ${missingCount} required field${missingCount !== 1 ? 's' : ''}:\n${missingFields}\n\nPlease complete these fields and try again.\nWebhook sent to create notification task.`, 
+          variant: "error" 
+        });
+      } else if (response?.status === "ERROR") {
+        // Function error or validation failed
+        const companyName = responseData.companyName || 'Company';
+        const errorMessage = response?.response?.message || response?.message || "Unknown error";
+        const missingFields = responseData.missingProperties;
+        
+        if (missingFields) {
+          // Validation error
+          const missingCount = responseData.missingPropertiesCount || 0;
           sendAlert({ 
-            message: `✅ Partnership Agreement sent successfully for ${companyName} (${envelopeId})`, 
-            variant: "success" 
+            message: `❌ DocuSign Cannot Be Sent for ${companyName}\n\nMissing ${missingCount} required field${missingCount !== 1 ? 's' : ''}:\n${missingFields}\n\nPlease complete these fields and try again.\nWebhook sent to create notification task.`, 
+            variant: "error" 
           });
-          // Refresh envelopes to show the new one
-          loadEnvelopes(1);
         } else {
+          // Other error
           sendAlert({ 
-            message: `✅ Partnership process completed for ${companyName} - check workflow for details`, 
-            variant: "success" 
+            message: `❌ Partnership Agreement Error: ${errorMessage}\n\nWebhook sent to process notifications.`, 
+            variant: "error" 
           });
         }
       } else {
-        const errorMessage = response?.response?.message || response?.message || "Unknown error";
+        // Unexpected response format
+        const errorMessage = response?.response?.message || response?.message || "Unexpected response format";
         sendAlert({ 
-          message: `⚠️ Partnership send completed with issues: ${errorMessage}`, 
+          message: `⚠️ Partnership process completed with unexpected result: ${errorMessage}\n\nWebhook sent - check workflow for details.`, 
           variant: "warning" 
         });
       }
