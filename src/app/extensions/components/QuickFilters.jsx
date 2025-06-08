@@ -43,5 +43,3 @@ const QuickFilters = ({ selectedView, onFilterChange, envelopes }) => {
 };
 
 export default QuickFilters;
-
-

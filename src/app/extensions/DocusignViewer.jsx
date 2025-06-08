@@ -9,7 +9,6 @@ import {
 import EnvelopeTable from './components/EnvelopeTable.jsx';
 import QuickFilters from './components/QuickFilters.jsx';
 import AdvancedFilters from './components/AdvancedFilters.jsx';
-import CompanyActionPanel from './components/CompanyActionPanel.jsx';
 import ConnectionStatus from './components/ConnectionStatus.jsx';
 
 hubspot.extend(({ context, runServerlessFunction, actions }) => (
@@ -256,7 +255,7 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
       <Box marginBottom="large">
         <Flex justify="space-between" align="center" marginBottom="medium">
           <Box>
-            <Heading>DocuSign Integration</Heading>
+            <Heading>DocuSign Envelopes</Heading>
             <Text variant="microcopy" format={{ color: "medium" }}>
               Manage partnership agreements and envelopes
             </Text>
@@ -274,15 +273,6 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
         renderAuthenticationError()
       ) : (
         <Box>
-          {/* Company Context & Primary Actions */}
-          {companyContext?.hasContext && (
-            <CompanyActionPanel 
-              companyContext={companyContext}
-              onSendPartnership={handleSendPartnership}
-              partnershipSending={uiState.partnershipSending}
-            />
-          )}
-
           {/* Quick Stats & Filters */}
           <Tile marginBottom="large">
             <Flex justify="space-between" align="center" marginBottom="medium">
@@ -290,6 +280,17 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
                 📊 Envelope Overview ({envelopesState.pagination.totalCount || 0})
               </Text>
               <Flex gap="small">
+                {companyContext?.hasContext && (
+                  <LoadingButton
+                    variant="primary"
+                    onClick={() => handleSendPartnership(companyContext.companyId)}
+                    loading={uiState.partnershipSending}
+                    loadingText="Sending..."
+                    disabled={uiState.partnershipSending}
+                  >
+                    📝 Send Partnership Agreement
+                  </LoadingButton>
+                )}
                 <Button 
                   variant="transparent" 
                   size="xs"
