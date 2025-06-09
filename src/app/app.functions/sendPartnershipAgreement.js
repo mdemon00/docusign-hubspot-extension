@@ -1,5 +1,5 @@
 // src/app/app.functions/sendPartnershipAgreement.js
-// Combined company validation and DocuSign sending functionality
+// Fixed version without window usage - Compatible with HubSpot UI Extensions
 
 const hubspot = require('@hubspot/api-client');
 const crypto = require('crypto');
@@ -7,7 +7,7 @@ const axios = require('axios');
 
 exports.main = async (context) => {
   const logs = [];
-  logs.push('Starting Partnership Agreement send process');
+  logs.push('Starting Partnership Agreement send process - v1.2.0');
 
   try {
     const { companyId } = context.parameters;
@@ -20,15 +20,15 @@ exports.main = async (context) => {
 
     // Initialize HubSpot client
     const hubspotClient = new hubspot.Client({
-      accessToken: process.env.PRIVATE_APP_ACCESS_TOKEN // Use your private app token
+      accessToken: process.env.PRIVATE_APP_ACCESS_TOKEN
     });
 
-    const portalId = '20424362'; // Your portal ID
+    const portalId = '20424362';
     let companyName = "Unknown Company";
     let webhookPayload = {};
 
     try {
-      // PHASE 1: COMPANY VALIDATION (from validate company production.js)
+      // PHASE 1: COMPANY VALIDATION
       const requiredProperties = [
         'hubspot_owner_id',
         'partnership_size', 
@@ -62,7 +62,7 @@ exports.main = async (context) => {
         logs.push(`Found ${teamContactIds.length} team contacts in company property`);
       } else {
         logs.push('No team contacts found in company property. Using default fallback contacts.');
-        teamContactIds = ['116135349037']; // Default contact ID
+        teamContactIds = ['116135349037'];
       }
 
       // Validate properties with conditional logic
@@ -106,10 +106,10 @@ exports.main = async (context) => {
       let finalSuccess = false;
 
       if (missingProperties.length === 0) {
-        logs.push('Validation passed, proceeding with DocuSign creation');
+        logs.push('✅ Validation passed, proceeding with DocuSign creation');
         
         try {
-          // DocuSign configuration (from docusign production.js)
+          // DocuSign configuration
           const integrationKey = "ad93e46e-5aa0-473b-8d9f-616db94d2614";
           const userId = "6717103e-13de-4e45-8ede-b63cb8cc52e1";
           const privateKey = `-----BEGIN RSA PRIVATE KEY-----
@@ -140,7 +140,7 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
 +i+toYBS9Zb1buVoDvFw6LVUy+7AvCL1QSBqNShkuvvKXZE4GsbE
 -----END RSA PRIVATE KEY-----`;
 
-          // Hardcoded recipient details (from production code)
+          // Hardcoded recipient details
           const partnershipLevel = properties.partnership_level;
           const recipientEmail = 'john.creedon@upequity.com';
           const recipientName = 'John';
@@ -183,7 +183,7 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
             : defaultAccount.base_uri + '/restapi/v2.1';
           const accountId = defaultAccount.account_id;
 
-          // Template ID mapping (from production code)
+          // Template ID mapping
           const templateIdMapping = {
             "Gold": "0aefb289-cf0f-4f87-9615-259fdacaf710",
             "Gold with Rev Share": "b5dc05f3-c738-4b23-a53e-9e620cc70fa8",
@@ -266,17 +266,17 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
           };
 
           finalSuccess = true;
-          logs.push(`DocuSign envelope created: ${docusignResult.envelopeId}`);
+          logs.push(`✅ DocuSign envelope created: ${docusignResult.envelopeId}`);
 
         } catch (docusignError) {
-          logs.push(`DocuSign creation failed: ${docusignError.message}`);
+          logs.push(`❌ DocuSign creation failed: ${docusignError.message}`);
           docusignResult = {
             success: false,
             error: docusignError.message
           };
         }
       } else {
-        logs.push(`Validation failed. Missing ${missingProperties.length} properties`);
+        logs.push(`❌ Validation failed. Missing ${missingProperties.length} properties: ${missingProperties.join(', ')}`);
       }
 
       // PHASE 3: CREATE NOTIFICATIONS AND TASKS
@@ -333,7 +333,7 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
       try {
         const taskResponse = await hubspotClient.crm.objects.tasks.basicApi.create(taskDetails);
         taskId = taskResponse.id;
-        logs.push(`Task created with ID: ${taskId}`);
+        logs.push(`✅ Task created with ID: ${taskId}`);
 
         // Associate with company
         await hubspotClient.apiRequest({
@@ -351,13 +351,13 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
             });
             associatedContacts++;
           } catch (contactError) {
-            logs.push(`Failed to associate with contact ${contactId}: ${contactError.message}`);
+            logs.push(`⚠️ Failed to associate with contact ${contactId}: ${contactError.message}`);
           }
         }
 
-        logs.push(`Associated task with ${associatedContacts} contacts`);
+        logs.push(`✅ Associated task with ${associatedContacts} contacts`);
       } catch (taskError) {
-        logs.push(`Error creating task: ${taskError.message}`);
+        logs.push(`⚠️ Error creating task: ${taskError.message}`);
       }
 
       // PHASE 4: PREPARE WEBHOOK PAYLOAD
@@ -398,6 +398,12 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
         contactIds: teamContactIds.join(','),
         contactsFound: teamContactIds.length,
         
+        // Webhook metadata
+        webhookTimestamp: new Date().toISOString(),
+        webhookAttempt: 1,
+        scenarioType: finalSuccess ? 'SUCCESS' : (missingProperties.length > 0 ? 'MISSING_FIELDS' : 'ERROR'),
+        version: '1.2.0',
+        
         message: finalSuccess 
           ? `${properties.partnership_level || 'Partnership'} Agreement sent to ${properties.partnership_agreement_signer || 'signer'} for ${companyName}` 
           : `DocuSign cannot be sent for ${companyName}. Missing ${missingProperties.length} properties.`,
@@ -405,8 +411,10 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
         logs: logs.join('\n')
       };
 
+      logs.push(`📊 Webhook payload prepared. Scenario: ${webhookPayload.scenarioType}`);
+
     } catch (companyError) {
-      logs.push(`ERROR getting company data: ${companyError.message}`);
+      logs.push(`❌ ERROR getting company data: ${companyError.message}`);
       
       // Error webhook payload
       webhookPayload = {
@@ -427,24 +435,17 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
         statusMessage: `Error validating DocuSign requirements: ${companyError.message}`,
         
         companyId: companyId,
+        scenarioType: 'COMPANY_ERROR',
+        webhookTimestamp: new Date().toISOString(),
+        webhookAttempt: 1,
+        version: '1.2.0',
         logs: logs.join('\n')
       };
     }
 
-    // PHASE 5: SEND WEBHOOK (ALWAYS - success or error)
-    try {
-      const webhookUrl = 'https://api-na1.hubapi.com/automation/v4/webhook-triggers/20424362/YE7bXwk';
-      
-      await axios.post(webhookUrl, webhookPayload, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 10000
-      });
-      
-      logs.push('Webhook sent successfully');
-    } catch (webhookError) {
-      logs.push(`Webhook failed: ${webhookError.message}`);
-    }
-
+    // PHASE 5: SEND WEBHOOK WITH ENHANCED LOGGING AND RETRY LOGIC
+    const webhookResult = await sendWebhookWithRetry(webhookPayload, logs);
+    
     // Return response for UI
     return {
       status: webhookPayload.success ? "SUCCESS" : "ERROR",
@@ -457,13 +458,15 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
         envelopeId: webhookPayload.envelopeId,
         missingProperties: webhookPayload.missingProperties,
         missingPropertiesCount: webhookPayload.missingPropertiesCount,
-        webhookSent: true
+        webhookSent: webhookResult.success,
+        webhookAttempts: webhookResult.attempts,
+        scenarioType: webhookPayload.scenarioType
       },
       timestamp: Date.now()
     };
 
   } catch (error) {
-    logs.push(`MAIN ERROR: ${error.message}`);
+    logs.push(`❌ MAIN ERROR: ${error.message}`);
     
     // Send error webhook
     const errorWebhookPayload = {
@@ -471,26 +474,162 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
       docusignReady: false,
       message: `Critical error: ${error.message}`,
       logs: logs.join('\n'),
-      companyId: context.parameters.companyId || 'unknown'
+      companyId: context.parameters.companyId || 'unknown',
+      scenarioType: 'CRITICAL_ERROR',
+      webhookTimestamp: new Date().toISOString(),
+      webhookAttempt: 1,
+      version: '1.2.0'
     };
 
-    try {
-      const webhookUrl = 'https://api-na1.hubapi.com/automation/v4/webhook-triggers/20424362/YE7bXwk';
-      await axios.post(webhookUrl, errorWebhookPayload, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 10000
-      });
-    } catch (webhookError) {
-      logs.push(`Error webhook failed: ${webhookError.message}`);
-    }
+    const webhookResult = await sendWebhookWithRetry(errorWebhookPayload, logs);
 
     return {
       status: "ERROR",
       message: `Critical error: ${error.message}`,
+      data: {
+        webhookSent: webhookResult.success,
+        webhookAttempts: webhookResult.attempts
+      },
       timestamp: Date.now()
     };
   }
 };
+
+/**
+ * Enhanced webhook sending with retry logic and detailed logging
+ */
+async function sendWebhookWithRetry(payload, logs, maxRetries = 3) {
+  const webhookUrl = 'https://api-na1.hubapi.com/automation/v4/webhook-triggers/20424362/YE7bXwk';
+  
+  logs.push(`🚀 Starting webhook send. Scenario: ${payload.scenarioType}, Attempt: 1/${maxRetries}`);
+  logs.push(`📊 Payload size: ${JSON.stringify(payload).length} characters`);
+  
+  // Console logs array for function logging
+  const consoleLogs = [];
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Update attempt number in payload
+      const attemptPayload = {
+        ...payload,
+        webhookAttempt: attempt,
+        webhookTimestamp: new Date().toISOString()
+      };
+      
+      logs.push(`📤 Webhook attempt ${attempt}: POST ${webhookUrl}`);
+      consoleLogs.push(`[WEBHOOK] Attempt ${attempt} - Sending webhook for scenario: ${payload.scenarioType}`);
+      
+      const startTime = Date.now();
+      
+      const response = await axios.post(webhookUrl, attemptPayload, {
+        headers: { 
+          'Content-Type': 'application/json',
+          'User-Agent': 'HubSpot-DocuSign-Integration/1.2.0'
+        },
+        timeout: 15000,
+        validateStatus: function (status) {
+          return status < 500; // Don't throw for 4xx errors, only 5xx
+        }
+      });
+      
+      const duration = Date.now() - startTime;
+      
+      if (response.status >= 200 && response.status < 300) {
+        logs.push(`✅ Webhook sent successfully on attempt ${attempt} (${duration}ms)`);
+        logs.push(`📥 Response status: ${response.status}`);
+        logs.push(`📥 Response data: ${JSON.stringify(response.data)}`);
+        
+        consoleLogs.push(`[WEBHOOK] ✅ SUCCESS - Attempt ${attempt} completed in ${duration}ms`);
+        consoleLogs.push(`[WEBHOOK] Response: ${response.status} - ${JSON.stringify(response.data)}`);
+        
+        // Log to function console for debugging
+        logToConsole(consoleLogs, payload.scenarioType, true);
+        
+        return { success: true, attempts: attempt, lastResponse: response.data };
+      } else {
+        logs.push(`⚠️ Webhook attempt ${attempt} failed with status ${response.status}`);
+        logs.push(`📥 Error response: ${JSON.stringify(response.data)}`);
+        
+        consoleLogs.push(`[WEBHOOK] ⚠️ FAILED - Attempt ${attempt} status: ${response.status}`);
+        consoleLogs.push(`[WEBHOOK] Error data: ${JSON.stringify(response.data)}`);
+        
+        if (attempt === maxRetries) {
+          logs.push(`❌ All webhook attempts failed. Final status: ${response.status}`);
+          consoleLogs.push(`[WEBHOOK] ❌ ALL ATTEMPTS FAILED - Final status: ${response.status}`);
+          logToConsole(consoleLogs, payload.scenarioType, false);
+          return { success: false, attempts: attempt, lastError: response.data };
+        }
+        
+        // Wait before retry (exponential backoff)
+        const waitTime = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+        logs.push(`⏳ Waiting ${waitTime}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+      
+    } catch (error) {
+      logs.push(`❌ Webhook attempt ${attempt} error: ${error.message}`);
+      consoleLogs.push(`[WEBHOOK] ❌ ERROR - Attempt ${attempt}: ${error.message}`);
+      
+      if (error.code) {
+        logs.push(`📊 Error code: ${error.code}`);
+        consoleLogs.push(`[WEBHOOK] Error code: ${error.code}`);
+      }
+      
+      if (error.response) {
+        logs.push(`📥 Error response status: ${error.response.status}`);
+        logs.push(`📥 Error response data: ${JSON.stringify(error.response.data)}`);
+        consoleLogs.push(`[WEBHOOK] Error response: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
+      }
+      
+      if (attempt === maxRetries) {
+        logs.push(`❌ All webhook attempts failed. Final error: ${error.message}`);
+        consoleLogs.push(`[WEBHOOK] ❌ ALL ATTEMPTS FAILED - Final error: ${error.message}`);
+        logToConsole(consoleLogs, payload.scenarioType, false);
+        return { success: false, attempts: attempt, lastError: error.message };
+      }
+      
+      // Wait before retry (exponential backoff)
+      const waitTime = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+      logs.push(`⏳ Waiting ${waitTime}ms before retry...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+  }
+  
+  logs.push(`❌ Webhook sending failed after ${maxRetries} attempts`);
+  consoleLogs.push(`[WEBHOOK] ❌ FINAL FAILURE after ${maxRetries} attempts`);
+  logToConsole(consoleLogs, payload.scenarioType, false);
+  
+  return { success: false, attempts: maxRetries, lastError: 'Max retries exceeded' };
+}
+
+/**
+ * Log webhook results to function console for debugging
+ */
+function logToConsole(consoleLogs, scenarioType, success) {
+  try {
+    // This will be logged in the HubSpot function logs
+    const logMessage = {
+      timestamp: new Date().toISOString(),
+      scenarioType: scenarioType,
+      webhookSuccess: success,
+      details: consoleLogs
+    };
+    
+    console.log('🔍 WEBHOOK DEBUG INFO:', JSON.stringify(logMessage, null, 2));
+    
+    // Also log each individual message for easier viewing
+    consoleLogs.forEach(log => console.log(log));
+    
+    if (success) {
+      console.log(`🎉 WEBHOOK SUCCESS for scenario: ${scenarioType}`);
+    } else {
+      console.error(`💥 WEBHOOK FAILURE for scenario: ${scenarioType}`);
+    }
+    
+  } catch (consoleError) {
+    console.error('Error logging to console:', consoleError);
+  }
+}
 
 /**
  * Generate JWT token for DocuSign authentication
