@@ -38,8 +38,7 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
     partnershipSending: false,
     selectedView: "recent",
     showFilters: false,
-    lastWebhookStatus: null, // Track webhook status
-    debugMode: false // Toggle for debug info
+    lastWebhookStatus: null // Track webhook status
   });
 
   // Filters State
@@ -393,7 +392,7 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
         </Flex>
         
         {/* Webhook Status Display */}
-        {renderWebhookStatus()}
+        {/* {renderWebhookStatus()} */}
         
         <Divider />
       </Box>
@@ -421,15 +420,6 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
                   }))}
                 >
                   🔍 {uiState.showFilters ? 'Hide' : 'Show'} Filters
-                </Button>
-                <Button 
-                  variant="transparent" 
-                  size="xs"
-                  onClick={() => setUiState(prev => ({ 
-                    ...prev, debugMode: !prev.debugMode 
-                  }))}
-                >
-                  🔍 {uiState.debugMode ? 'Hide' : 'Show'} Debug
                 </Button>
                 <Button variant="secondary" size="xs" onClick={() => loadEnvelopes(1)}>
                   🔄 Refresh
@@ -463,9 +453,6 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
               ...prev, pagination: { ...prev.pagination, currentPage: newPage } 
             }))}
           />
-
-          {/* Debug Information */}
-          {renderDebugInfo()}
 
           {/* Help Footer */}
           <Tile marginTop="large">
