@@ -255,12 +255,26 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
       <Box marginBottom="large">
         <Flex justify="space-between" align="center" marginBottom="medium">
           <Box>
-            <Heading>DocuSign Envelopes</Heading>
+            {/* <Heading>DocuSign Envelopes</Heading> */}
             <Text variant="microcopy" format={{ color: "medium" }}>
               Manage partnership agreements and envelopes
             </Text>
           </Box>
-          <ConnectionStatus authState={authState} />
+          <Flex direction="column" align="end" gap="small">
+            <ConnectionStatus authState={authState} />
+            {companyContext?.hasContext && (
+              <LoadingButton
+                variant="primary"
+                onClick={() => handleSendPartnership(companyContext.companyId)}
+                loading={uiState.partnershipSending}
+                loadingText="Sending..."
+                disabled={uiState.partnershipSending}
+                size="small"
+              >
+                📝 Send Partnership Agreement
+              </LoadingButton>
+            )}
+          </Flex>
         </Flex>
         <Divider />
       </Box>
@@ -273,6 +287,8 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
         renderAuthenticationError()
       ) : (
         <Box>
+          {/* Primary Action Section - Company Context */}
+
           {/* Quick Stats & Filters */}
           <Tile marginBottom="large">
             <Flex justify="space-between" align="center" marginBottom="medium">
@@ -280,17 +296,6 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
                 📊 Envelope Overview ({envelopesState.pagination.totalCount || 0})
               </Text>
               <Flex gap="small">
-                {companyContext?.hasContext && (
-                  <LoadingButton
-                    variant="primary"
-                    onClick={() => handleSendPartnership(companyContext.companyId)}
-                    loading={uiState.partnershipSending}
-                    loadingText="Sending..."
-                    disabled={uiState.partnershipSending}
-                  >
-                    📝 Send Partnership Agreement
-                  </LoadingButton>
-                )}
                 <Button 
                   variant="transparent" 
                   size="xs"
