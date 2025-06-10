@@ -347,30 +347,29 @@ function getStatusLabel(status) {
   return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
 }
 
-/**
- * Format date with proper timezone conversion
- * Defaults to Central Time (CST/CDT) with automatic daylight saving handling
- */
 function formatDate(dateString, userTimezone = 'America/Chicago') {
   if (!dateString) return '';
   
   try {
     const date = new Date(dateString);
     
-    // Check if the date is valid
     if (isNaN(date.getTime())) {
       return dateString;
     }
     
-    return new Intl.DateTimeFormat('en-US', {
+    // Format without timezone name first
+    const formatted = new Intl.DateTimeFormat('en-US', {
       year: 'numeric',
       month: 'short', 
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-      timeZone: userTimezone,
-      timeZoneName: 'short' // Shows CST/CDT
+      timeZone: userTimezone
     }).format(date);
+    
+    // Always append CST regardless of daylight saving
+    return `${formatted} CST`;
+    
   } catch (error) {
     console.warn('Date formatting error:', error);
     return dateString;
