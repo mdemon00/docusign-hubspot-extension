@@ -417,7 +417,7 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
               <Text format={{ fontWeight: "bold" }}>
                 📊 Envelope Overview ({envelopesState.pagination.totalCount || 0})
               </Text>
-              <Flex gap="small">
+              {/* <Flex gap="small">
                 <Button
                   variant="transparent"
                   size="xs"
@@ -430,7 +430,7 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
                 <Button variant="secondary" size="xs" onClick={() => loadEnvelopes(1)}>
                   🔄 Refresh
                 </Button>
-              </Flex>
+              </Flex> */}
             </Flex>
 
             <QuickFilters
@@ -439,13 +439,13 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
               envelopes={envelopesState.envelopes}
             />
 
-            {uiState.showFilters && (
+            {/* {uiState.showFilters && (
               <AdvancedFilters
                 filters={filters}
                 onFilterChange={handleFilterChange}
                 disabled={envelopesState.loading}
               />
-            )}
+            )} */}
           </Tile>
 
           {/* Envelopes List */}
