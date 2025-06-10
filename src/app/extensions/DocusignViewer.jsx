@@ -2,7 +2,7 @@
 // Enhanced DocuSign Viewer with webhook status logging and better debugging
 import React, { useState, useEffect } from "react";
 import {
-  Divider, Button, Text, Flex, hubspot, Heading, Box, Alert, LoadingSpinner, 
+  Divider, Button, Text, Flex, hubspot, Heading, Box, Alert, LoadingSpinner,
   Link, Tile, LoadingButton
 } from "@hubspot/ui-extensions";
 
@@ -50,14 +50,14 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
   // Company Context Detection
   const [companyContext, setCompanyContext] = useState(null);
 
-  useEffect(() => { 
-    authenticateWithDocusign(); 
+  useEffect(() => {
+    authenticateWithDocusign();
     detectCompanyContext();
-    
+
     // Enable debug logging
     console.log('🔍 DocuSign Extension Loaded - v1.2.0');
   }, []);
-  
+
   useEffect(() => {
     if (authState.isAuthenticated && authState.accessToken) {
       loadEnvelopes();
@@ -156,13 +156,14 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
   };
 
   // Enhanced partnership agreement send with webhook status tracking
+  // Enhanced partnership agreement send with webhook status tracking
   const handleSendPartnership = async (companyId) => {
     if (!companyId) {
       sendAlert({ message: "❌ No company ID available", variant: "error" });
       return;
     }
 
-    console.log('📝 Starting partnership agreement send for company:', companyId);
+    console.log('📝 Starting partnership agreement validation for company:', companyId);
     setUiState(prev => ({ ...prev, partnershipSending: true, lastWebhookStatus: null }));
 
     try {
@@ -175,9 +176,12 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
       const duration = Date.now() - startTime;
       setUiState(prev => ({ ...prev, partnershipSending: false }));
 
-      // Enhanced response handling with webhook status
+      // Enhanced response handling for VALIDATION-ONLY mode
       const responseData = response?.response?.data || {};
-      const actualSuccess = responseData.docusignReady && responseData.envelopeId;
+
+      // Updated success logic for validation-only mode (no envelopeId expected)
+      const actualSuccess = response?.status === "SUCCESS" && responseData.docusignReady;
+
       const webhookStatus = {
         sent: responseData.webhookSent || false,
         attempts: responseData.webhookAttempts || 0,
@@ -188,68 +192,70 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
       setUiState(prev => ({ ...prev, lastWebhookStatus: webhookStatus }));
 
       // Log detailed response info
-      console.log('📊 Partnership Agreement Response:', {
+      console.log('📊 Partnership Agreement Validation Response:', {
         status: response?.status,
         success: actualSuccess,
         webhookStatus: webhookStatus,
         duration: `${duration}ms`,
         scenarioType: responseData.scenarioType,
         missingFields: responseData.missingProperties,
-        envelopeId: responseData.envelopeId
+        validationOnly: responseData.validationOnly
       });
 
       if (response?.status === "SUCCESS" && actualSuccess) {
+        // VALIDATION SUCCESS - Company is ready for DocuSign
         const companyName = responseData.companyName || 'Company';
-        const envelopeId = responseData.envelopeId;
-        
-        console.log('✅ Partnership Agreement sent successfully:', {
+
+        console.log('✅ Partnership Agreement validation passed:', {
           company: companyName,
-          envelopeId: envelopeId,
-          webhookSent: webhookStatus.sent
+          webhookSent: webhookStatus.sent,
+          validationOnly: responseData.validationOnly
         });
-        
-        sendAlert({ 
-          message: `✅ Partnership Agreement sent successfully for ${companyName}${webhookStatus.sent ? ' (Notifications sent)' : ' (Warning: Notifications failed)'}`, 
-          variant: "success" 
+
+        sendAlert({
+          message: `✅ ${companyName} is ready for DocuSign creation${webhookStatus.sent ? ' (Workflow triggered)' : ' (Warning: Workflow notification failed)'}`,
+          variant: "success"
         });
-        loadEnvelopes(1); // Refresh to show new envelope
-        
+        loadEnvelopes(1); // Refresh to show any new envelopes created by workflow
+
       } else if (response?.status === "SUCCESS" && !responseData.docusignReady) {
+        // VALIDATION FAILED - Missing required fields
         const companyName = responseData.companyName || 'Company';
         const missingFields = responseData.missingProperties || 'Unknown fields';
         const missingCount = responseData.missingPropertiesCount || 0;
-        
+
         console.log('❌ DocuSign validation failed:', {
           company: companyName,
           missingFields: missingFields,
           missingCount: missingCount,
           webhookSent: webhookStatus.sent
         });
-        
-        sendAlert({ 
-          message: `❌ Cannot send DocuSign for ${companyName}. Missing ${missingCount} required field${missingCount !== 1 ? 's' : ''}: ${missingFields}${webhookStatus.sent ? ' (Team notified)' : ' (Warning: Notification failed)'}`, 
-          variant: "error" 
+
+        sendAlert({
+          message: `❌ Cannot create DocuSign for ${companyName}. Missing ${missingCount} required field${missingCount !== 1 ? 's' : ''}: ${missingFields}${webhookStatus.sent ? ' (Team notified)' : ' (Warning: Notification failed)'}`,
+          variant: "error"
         });
-        
+
       } else {
+        // SYSTEM ERROR
         const errorMessage = response?.response?.message || response?.message || "Unknown error";
-        console.error('❌ Partnership Agreement Error:', {
+        console.error('❌ Partnership Agreement System Error:', {
           error: errorMessage,
           webhookStatus: webhookStatus,
           fullResponse: response
         });
-        
-        sendAlert({ 
-          message: `❌ Partnership Agreement Error: ${errorMessage}${webhookStatus.sent ? ' (Team notified)' : ' (Warning: Notification failed)'}`, 
-          variant: "error" 
+
+        sendAlert({
+          message: `❌ Partnership Agreement Error: ${errorMessage}${webhookStatus.sent ? ' (Team notified)' : ' (Warning: Notification failed)'}`,
+          variant: "error"
         });
       }
     } catch (error) {
-      console.error('❌ Failed to send partnership agreement:', error);
+      console.error('❌ Failed to validate partnership agreement:', error);
       setUiState(prev => ({ ...prev, partnershipSending: false }));
-      sendAlert({ 
-        message: `❌ Failed to send partnership agreement: ${error.message}`, 
-        variant: "error" 
+      sendAlert({
+        message: `❌ Failed to validate partnership agreement: ${error.message}`,
+        variant: "error"
       });
     }
   };
@@ -266,7 +272,7 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
       completed: { status: 'completed' },
       all: { status: 'all' }
     };
-    
+
     setUiState(prev => ({ ...prev, selectedView: filterType }));
     handleFilterChange(quickFilterMap[filterType] || {});
   };
@@ -275,7 +281,7 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
     if (!uiState.lastWebhookStatus) return null;
 
     const { sent, attempts, scenarioType } = uiState.lastWebhookStatus;
-    
+
     return (
       <Box marginTop="small">
         <Alert variant={sent ? "success" : "warning"}>
@@ -285,8 +291,8 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
                 {sent ? '✅ Webhook Sent' : '⚠️ Webhook Failed'}
               </Text>
               <Text variant="microcopy" format={{ color: "medium" }}>
-                {sent 
-                  ? `Team notifications sent successfully (${attempts} attempt${attempts !== 1 ? 's' : ''})` 
+                {sent
+                  ? `Team notifications sent successfully (${attempts} attempt${attempts !== 1 ? 's' : ''})`
                   : `Failed to send notifications after ${attempts} attempt${attempts !== 1 ? 's' : ''}`
                 }
               </Text>
@@ -313,14 +319,14 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
             Hide Debug
           </Button>
         </Flex>
-        
+
         <Box style={{ backgroundColor: '#f8f9fa', padding: '12px', borderRadius: '6px', fontSize: '12px', fontFamily: 'monospace' }}>
           <Text variant="microcopy">Company Context: {JSON.stringify(companyContext, null, 2)}</Text>
           <br />
-          <Text variant="microcopy">Auth State: {JSON.stringify({ 
-            isAuthenticated: authState.isAuthenticated, 
+          <Text variant="microcopy">Auth State: {JSON.stringify({
+            isAuthenticated: authState.isAuthenticated,
             hasToken: !!authState.accessToken,
-            accountName: authState.account?.accountName 
+            accountName: authState.account?.accountName
           }, null, 2)}</Text>
           <br />
           <Text variant="microcopy">Last Webhook Status: {JSON.stringify(uiState.lastWebhookStatus, null, 2)}</Text>
@@ -345,8 +351,8 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
                     🔗 Authorize DocuSign Access
                   </Button>
                 </Link>
-                <Button variant="secondary" size="xs" onClick={authenticateWithDocusign} 
-                        disabled={authState.isAuthenticating}>
+                <Button variant="secondary" size="xs" onClick={authenticateWithDocusign}
+                  disabled={authState.isAuthenticating}>
                   ↻ Retry After Authorization
                 </Button>
               </Flex>
@@ -390,10 +396,10 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
             )}
           </Flex>
         </Flex>
-        
+
         {/* Webhook Status Display */}
         {/* {renderWebhookStatus()} */}
-        
+
         <Divider />
       </Box>
 
@@ -412,11 +418,11 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
                 📊 Envelope Overview ({envelopesState.pagination.totalCount || 0})
               </Text>
               <Flex gap="small">
-                <Button 
-                  variant="transparent" 
+                <Button
+                  variant="transparent"
                   size="xs"
-                  onClick={() => setUiState(prev => ({ 
-                    ...prev, showFilters: !prev.showFilters 
+                  onClick={() => setUiState(prev => ({
+                    ...prev, showFilters: !prev.showFilters
                   }))}
                 >
                   🔍 {uiState.showFilters ? 'Hide' : 'Show'} Filters
@@ -427,14 +433,14 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
               </Flex>
             </Flex>
 
-            <QuickFilters 
+            <QuickFilters
               selectedView={uiState.selectedView}
               onFilterChange={handleQuickFilterChange}
               envelopes={envelopesState.envelopes}
             />
 
             {uiState.showFilters && (
-              <AdvancedFilters 
+              <AdvancedFilters
                 filters={filters}
                 onFilterChange={handleFilterChange}
                 disabled={envelopesState.loading}
@@ -443,14 +449,14 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
           </Tile>
 
           {/* Envelopes List */}
-          <EnvelopeTable 
+          <EnvelopeTable
             envelopes={envelopesState.envelopes}
             loading={envelopesState.loading}
             error={envelopesState.error}
             pagination={envelopesState.pagination}
             onRefresh={() => loadEnvelopes(1)}
-            onPageChange={(newPage) => setEnvelopesState(prev => ({ 
-              ...prev, pagination: { ...prev.pagination, currentPage: newPage } 
+            onPageChange={(newPage) => setEnvelopesState(prev => ({
+              ...prev, pagination: { ...prev.pagination, currentPage: newPage }
             }))}
           />
 
