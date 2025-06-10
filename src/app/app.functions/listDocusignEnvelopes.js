@@ -348,21 +348,31 @@ function getStatusLabel(status) {
 }
 
 /**
- * Format date for display
+ * Format date with proper timezone conversion
+ * Defaults to Central Time (CST/CDT) with automatic daylight saving handling
  */
-function formatDate(dateString) {
+function formatDate(dateString, userTimezone = 'America/Chicago') {
   if (!dateString) return '';
   
   try {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
+    
+    // Check if the date is valid
+    if (isNaN(date.getTime())) {
+      return dateString;
+    }
+    
+    return new Intl.DateTimeFormat('en-US', {
       year: 'numeric',
-      month: 'short',
+      month: 'short', 
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
-    });
+      minute: '2-digit',
+      timeZone: userTimezone,
+      timeZoneName: 'short' // Shows CST/CDT
+    }).format(date);
   } catch (error) {
+    console.warn('Date formatting error:', error);
     return dateString;
   }
 }
