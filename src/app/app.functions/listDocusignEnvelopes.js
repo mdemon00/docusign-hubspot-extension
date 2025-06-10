@@ -1,5 +1,5 @@
 // src/app/app.functions/listDocusignEnvelopes.js
-// Fixed DocuSign envelopes listing with required from_date parameter
+// Fixed DocuSign envelopes listing with recipients data included
 
 const axios = require('axios');
 
@@ -39,6 +39,9 @@ exports.main = async (context) => {
       order: order
     });
 
+    // CRITICAL FIX: Add include=recipients parameter to get recipient data
+    queryParams.append('include', 'recipients');
+
     // DocuSign requires either from_date OR envelope_ids/folder_ids/transaction_ids
     // If no fromDate provided, set a default to get recent envelopes (last 30 days)
     let effectiveFromDate = fromDate;
@@ -71,6 +74,7 @@ exports.main = async (context) => {
     const apiUrl = `${baseUrl}/accounts/${accountId}/envelopes?${queryParams.toString()}`;
     
     console.log('🔗 DocuSign API URL:', apiUrl);
+    console.log('✅ FIXED: Now including recipients data in API call');
 
     // Make API request with enhanced error handling
     const response = await axios.get(apiUrl, {
@@ -118,9 +122,26 @@ exports.main = async (context) => {
     
     console.log(`📦 Retrieved ${data.envelopes?.length || 0} envelopes`);
 
-    // Process envelope data with enhanced error handling
+    // Process envelope data with enhanced recipient handling
     const processedEnvelopes = (data.envelopes || []).map(envelope => {
       try {
+        // Enhanced recipient processing with debugging
+        const recipientsCount = getRecipientsCount(envelope);
+        const recipientsText = getRecipientsText(envelope);
+        
+        // Debug log for recipients (remove in production)
+        if (envelope.recipients) {
+          console.log(`📝 Envelope ${envelope.envelopeId}: Found recipients data:`, {
+            signers: envelope.recipients.signers?.length || 0,
+            carbonCopies: envelope.recipients.carbonCopies?.length || 0,
+            certifiedDeliveries: envelope.recipients.certifiedDeliveries?.length || 0,
+            inPersonSigners: envelope.recipients.inPersonSigners?.length || 0,
+            total: recipientsCount
+          });
+        } else {
+          console.log(`⚠️ Envelope ${envelope.envelopeId}: No recipients data found`);
+        }
+
         return {
           // Basic envelope information
           envelopeId: envelope.envelopeId,
@@ -143,8 +164,9 @@ exports.main = async (context) => {
           sentDateTime: envelope.sentDateTime,
           completedDateTime: envelope.completedDateTime,
           
-          // Recipients count
-          recipientsCount: getRecipientsCount(envelope),
+          // Recipients data (NOW INCLUDED!)
+          recipientsCount: recipientsCount,
+          recipients: envelope.recipients || {},
           
           // Additional metadata
           envelopeUri: envelope.envelopeUri,
@@ -160,7 +182,7 @@ exports.main = async (context) => {
           displayData: {
             statusColor: getStatusColor(envelope.status),
             statusLabel: getStatusLabel(envelope.status),
-            recipientsText: getRecipientsText(envelope),
+            recipientsText: recipientsText,
             lastUpdated: formatDate(envelope.lastModifiedDateTime),
             createDate: formatDate(envelope.createdDateTime),
             senderDisplay: envelope.sender?.userName || 'Unknown'
@@ -178,10 +200,11 @@ exports.main = async (context) => {
           createdDateTime: envelope.createdDateTime,
           lastModifiedDateTime: envelope.lastModifiedDateTime,
           recipientsCount: 0,
+          recipients: {},
           displayData: {
             statusColor: '#95a5a6',
             statusLabel: 'Unknown',
-            recipientsText: 'Unknown',
+            recipientsText: 'Processing Error',
             lastUpdated: formatDate(envelope.lastModifiedDateTime),
             createDate: formatDate(envelope.createdDateTime),
             senderDisplay: 'Unknown'
@@ -200,7 +223,7 @@ exports.main = async (context) => {
 
     return {
       status: "SUCCESS",
-      message: `Retrieved ${processedEnvelopes.length} envelopes`,
+      message: `Retrieved ${processedEnvelopes.length} envelopes with recipient data`,
       data: {
         envelopes: processedEnvelopes,
         pagination: {
@@ -220,7 +243,8 @@ exports.main = async (context) => {
           toDate,
           orderBy,
           order
-        }
+        },
+        includeRecipients: true // Flag indicating recipients are included
       },
       timestamp: Date.now()
     };
@@ -294,27 +318,70 @@ exports.main = async (context) => {
 };
 
 /**
- * Get recipients count from envelope data
+ * FIXED: Enhanced recipients count function with better error handling
  */
 function getRecipientsCount(envelope) {
-  if (!envelope.recipients) return 0;
+  if (!envelope || !envelope.recipients) {
+    console.log('⚠️ No recipients object found in envelope');
+    return 0;
+  }
   
   let count = 0;
-  if (envelope.recipients.signers) count += envelope.recipients.signers.length;
-  if (envelope.recipients.carbonCopies) count += envelope.recipients.carbonCopies.length;
-  if (envelope.recipients.certifiedDeliveries) count += envelope.recipients.certifiedDeliveries.length;
-  if (envelope.recipients.inPersonSigners) count += envelope.recipients.inPersonSigners.length;
+  const recipients = envelope.recipients;
+  
+  // Count all types of recipients
+  if (recipients.signers && Array.isArray(recipients.signers)) {
+    count += recipients.signers.length;
+  }
+  if (recipients.carbonCopies && Array.isArray(recipients.carbonCopies)) {
+    count += recipients.carbonCopies.length;
+  }
+  if (recipients.certifiedDeliveries && Array.isArray(recipients.certifiedDeliveries)) {
+    count += recipients.certifiedDeliveries.length;
+  }
+  if (recipients.inPersonSigners && Array.isArray(recipients.inPersonSigners)) {
+    count += recipients.inPersonSigners.length;
+  }
+  if (recipients.intermediaries && Array.isArray(recipients.intermediaries)) {
+    count += recipients.intermediaries.length;
+  }
+  if (recipients.witnesses && Array.isArray(recipients.witnesses)) {
+    count += recipients.witnesses.length;
+  }
+  if (recipients.editors && Array.isArray(recipients.editors)) {
+    count += recipients.editors.length;
+  }
   
   return count;
 }
 
 /**
- * Get recipients text for display
+ * FIXED: Enhanced recipients text function with detailed breakdown
  */
 function getRecipientsText(envelope) {
   const count = getRecipientsCount(envelope);
+  
   if (count === 0) return 'No recipients';
   if (count === 1) return '1 recipient';
+  
+  // Enhanced: Show breakdown if recipients data is available
+  if (envelope.recipients) {
+    const breakdown = [];
+    if (envelope.recipients.signers?.length) {
+      breakdown.push(`${envelope.recipients.signers.length} signer${envelope.recipients.signers.length !== 1 ? 's' : ''}`);
+    }
+    if (envelope.recipients.carbonCopies?.length) {
+      breakdown.push(`${envelope.recipients.carbonCopies.length} CC`);
+    }
+    if (envelope.recipients.certifiedDeliveries?.length) {
+      breakdown.push(`${envelope.recipients.certifiedDeliveries.length} certified`);
+    }
+    
+    if (breakdown.length > 0) {
+      return `${count} recipients (${breakdown.join(', ')})`;
+    }
+  }
+  
   return `${count} recipients`;
 }
 
@@ -347,6 +414,9 @@ function getStatusLabel(status) {
   return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
 }
 
+/**
+ * Format date with timezone
+ */
 function formatDate(dateString, userTimezone = 'America/Chicago') {
   if (!dateString) return '';
   
