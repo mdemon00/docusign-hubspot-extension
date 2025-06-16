@@ -1,3 +1,5 @@
+// src/app/extensions/components/EnvelopeTable.jsx
+// Enhanced envelope table with detailed recipient information display
 import React from "react";
 import {
   Table, TableHead, TableRow, TableHeader, TableBody, TableCell,
@@ -5,6 +7,7 @@ import {
 } from "@hubspot/ui-extensions";
 
 import StatusBadge from './StatusBadge.jsx';
+import RecipientsList from './RecipientsList.jsx';
 
 const EnvelopeTable = ({ 
   envelopes, 
@@ -97,7 +100,11 @@ const EnvelopeTable = ({
                     />
                   </TableCell>
                   <TableCell>
-                    <Text variant="microcopy">{envelope.displayData.recipientsText}</Text>
+                    <RecipientsList 
+                      recipientsDetails={envelope.recipientsDetails}
+                      recipientsSummary={envelope.recipientsSummary || envelope.displayData.recipientsText}
+                      maxDisplay={2}
+                    />
                   </TableCell>
                   <TableCell>
                     <Box>
@@ -122,7 +129,7 @@ const EnvelopeTable = ({
 
           <Box marginTop="small">
             <Text variant="microcopy" format={{ color: 'medium' }}>
-              Showing {envelopes.length} envelope{envelopes.length !== 1 ? 's' : ''}
+              Showing {envelopes.length} envelope{envelopes.length !== 1 ? 's' : ''} with detailed recipient information
             </Text>
           </Box>
         </>

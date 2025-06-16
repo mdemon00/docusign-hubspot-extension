@@ -1,5 +1,5 @@
 // src/app/app.functions/listDocusignEnvelopes.js
-// Fixed DocuSign envelopes listing with recipients data included
+// Enhanced DocuSign envelopes listing with detailed recipient information
 
 const axios = require('axios');
 
@@ -39,7 +39,7 @@ exports.main = async (context) => {
       order: order
     });
 
-    // CRITICAL FIX: Add include=recipients parameter to get recipient data
+    // CRITICAL: Add include=recipients parameter to get recipient data
     queryParams.append('include', 'recipients');
 
     // DocuSign requires either from_date OR envelope_ids/folder_ids/transaction_ids
@@ -74,7 +74,7 @@ exports.main = async (context) => {
     const apiUrl = `${baseUrl}/accounts/${accountId}/envelopes?${queryParams.toString()}`;
     
     console.log('🔗 DocuSign API URL:', apiUrl);
-    console.log('✅ FIXED: Now including recipients data in API call');
+    console.log('✅ INCLUDING recipients data in API call');
 
     // Make API request with enhanced error handling
     const response = await axios.get(apiUrl, {
@@ -125,18 +125,21 @@ exports.main = async (context) => {
     // Process envelope data with enhanced recipient handling
     const processedEnvelopes = (data.envelopes || []).map(envelope => {
       try {
-        // Enhanced recipient processing with debugging
-        const recipientsCount = getRecipientsCount(envelope);
-        const recipientsText = getRecipientsText(envelope);
+        // Enhanced recipient processing with detailed information
+        const recipientsData = getRecipientsDetails(envelope);
+        const recipientsCount = recipientsData.count;
+        const recipientsText = recipientsData.summary;
         
-        // Debug log for recipients (remove in production)
+        // Debug log for recipients with detailed breakdown
         if (envelope.recipients) {
           console.log(`📝 Envelope ${envelope.envelopeId}: Found recipients data:`, {
             signers: envelope.recipients.signers?.length || 0,
             carbonCopies: envelope.recipients.carbonCopies?.length || 0,
             certifiedDeliveries: envelope.recipients.certifiedDeliveries?.length || 0,
             inPersonSigners: envelope.recipients.inPersonSigners?.length || 0,
-            total: recipientsCount
+            total: recipientsCount,
+            summary: recipientsText,
+            detailsCount: recipientsData.details.length
           });
         } else {
           console.log(`⚠️ Envelope ${envelope.envelopeId}: No recipients data found`);
@@ -164,9 +167,11 @@ exports.main = async (context) => {
           sentDateTime: envelope.sentDateTime,
           completedDateTime: envelope.completedDateTime,
           
-          // Recipients data (NOW INCLUDED!)
+          // Recipients data with detailed information
           recipientsCount: recipientsCount,
           recipients: envelope.recipients || {},
+          recipientsDetails: recipientsData.details, // NEW: Detailed recipient info
+          recipientsSummary: recipientsText, // NEW: Formatted summary
           
           // Additional metadata
           envelopeUri: envelope.envelopeUri,
@@ -201,6 +206,8 @@ exports.main = async (context) => {
           lastModifiedDateTime: envelope.lastModifiedDateTime,
           recipientsCount: 0,
           recipients: {},
+          recipientsDetails: [],
+          recipientsSummary: 'Processing Error',
           displayData: {
             statusColor: '#95a5a6',
             statusLabel: 'Unknown',
@@ -223,7 +230,7 @@ exports.main = async (context) => {
 
     return {
       status: "SUCCESS",
-      message: `Retrieved ${processedEnvelopes.length} envelopes with recipient data`,
+      message: `Retrieved ${processedEnvelopes.length} envelopes with detailed recipient information`,
       data: {
         envelopes: processedEnvelopes,
         pagination: {
@@ -244,7 +251,8 @@ exports.main = async (context) => {
           orderBy,
           order
         },
-        includeRecipients: true // Flag indicating recipients are included
+        includeRecipients: true, // Flag indicating recipients are included
+        recipientEnhancements: true // Flag indicating enhanced recipient processing
       },
       timestamp: Date.now()
     };
@@ -318,7 +326,7 @@ exports.main = async (context) => {
 };
 
 /**
- * FIXED: Enhanced recipients count function with better error handling
+ * Enhanced recipients count function with better error handling
  */
 function getRecipientsCount(envelope) {
   if (!envelope || !envelope.recipients) {
@@ -356,33 +364,128 @@ function getRecipientsCount(envelope) {
 }
 
 /**
- * FIXED: Enhanced recipients text function with detailed breakdown
+ * NEW: Get detailed recipient information with names, emails, and status
  */
-function getRecipientsText(envelope) {
-  const count = getRecipientsCount(envelope);
-  
-  if (count === 0) return 'No recipients';
-  if (count === 1) return '1 recipient';
-  
-  // Enhanced: Show breakdown if recipients data is available
-  if (envelope.recipients) {
-    const breakdown = [];
-    if (envelope.recipients.signers?.length) {
-      breakdown.push(`${envelope.recipients.signers.length} signer${envelope.recipients.signers.length !== 1 ? 's' : ''}`);
-    }
-    if (envelope.recipients.carbonCopies?.length) {
-      breakdown.push(`${envelope.recipients.carbonCopies.length} CC`);
-    }
-    if (envelope.recipients.certifiedDeliveries?.length) {
-      breakdown.push(`${envelope.recipients.certifiedDeliveries.length} certified`);
-    }
-    
-    if (breakdown.length > 0) {
-      return `${count} recipients (${breakdown.join(', ')})`;
-    }
+function getRecipientsDetails(envelope) {
+  if (!envelope || !envelope.recipients) {
+    return {
+      count: 0,
+      details: [],
+      summary: 'No recipients'
+    };
   }
   
-  return `${count} recipients`;
+  const recipients = envelope.recipients;
+  const details = [];
+  
+  // Process signers (most important)
+  if (recipients.signers && Array.isArray(recipients.signers)) {
+    recipients.signers.forEach((signer, index) => {
+      details.push({
+        type: 'signer',
+        name: signer.name || signer.userName || 'Unknown Signer',
+        email: signer.email || '',
+        status: signer.status || 'created',
+        routingOrder: signer.routingOrder || index + 1,
+        recipientId: signer.recipientId,
+        signedDateTime: signer.signedDateTime,
+        deliveredDateTime: signer.deliveredDateTime,
+        isPrimary: true
+      });
+    });
+  }
+  
+  // Process carbon copies
+  if (recipients.carbonCopies && Array.isArray(recipients.carbonCopies)) {
+    recipients.carbonCopies.forEach((cc, index) => {
+      details.push({
+        type: 'cc',
+        name: cc.name || cc.userName || 'Unknown CC',
+        email: cc.email || '',
+        status: cc.status || 'created',
+        routingOrder: cc.routingOrder || 999,
+        recipientId: cc.recipientId,
+        deliveredDateTime: cc.deliveredDateTime,
+        isPrimary: false
+      });
+    });
+  }
+  
+  // Process certified deliveries
+  if (recipients.certifiedDeliveries && Array.isArray(recipients.certifiedDeliveries)) {
+    recipients.certifiedDeliveries.forEach((cert, index) => {
+      details.push({
+        type: 'certified',
+        name: cert.name || cert.userName || 'Certified Recipient',
+        email: cert.email || '',
+        status: cert.status || 'created',
+        routingOrder: cert.routingOrder || 999,
+        recipientId: cert.recipientId,
+        deliveredDateTime: cert.deliveredDateTime,
+        isPrimary: false
+      });
+    });
+  }
+  
+  // Sort by routing order, then by type priority
+  details.sort((a, b) => {
+    if (a.routingOrder !== b.routingOrder) {
+      return a.routingOrder - b.routingOrder;
+    }
+    // Signers first, then CC, then others
+    const typePriority = { signer: 1, cc: 2, certified: 3 };
+    return (typePriority[a.type] || 999) - (typePriority[b.type] || 999);
+  });
+  
+  return {
+    count: details.length,
+    details: details,
+    summary: generateRecipientsSummary(details)
+  };
+}
+
+/**
+ * Generate a concise summary of recipients for display
+ */
+function generateRecipientsSummary(details) {
+  if (!details || details.length === 0) {
+    return 'No recipients';
+  }
+  
+  // Get primary signers only for main display
+  const signers = details.filter(r => r.type === 'signer');
+  const others = details.filter(r => r.type !== 'signer');
+  
+  if (details.length === 1) {
+    const recipient = details[0];
+    const name = recipient.name || 'Unknown';
+    const email = recipient.email ? ` (${recipient.email})` : '';
+    return `${name}${email}`;
+  }
+  
+  if (details.length === 2) {
+    const names = details.map(r => r.name || 'Unknown').join(', ');
+    return names;
+  }
+  
+  if (details.length === 3) {
+    const names = details.slice(0, 2).map(r => r.name || 'Unknown').join(', ');
+    const third = details[2].name || 'Unknown';
+    return `${names}, ${third}`;
+  }
+  
+  // For 4+ recipients, show first name + count
+  const firstName = details[0].name || 'Unknown';
+  const remainingCount = details.length - 1;
+  return `${firstName} +${remainingCount} other${remainingCount !== 1 ? 's' : ''}`;
+}
+
+/**
+ * UPDATED: Enhanced recipients text function with names and emails
+ */
+function getRecipientsText(envelope) {
+  const recipientDetails = getRecipientsDetails(envelope);
+  return recipientDetails.summary;
 }
 
 /**
