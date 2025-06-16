@@ -75,7 +75,7 @@ const EnvelopeTable = ({
                 <TableHeader>STATUS</TableHeader>
                 <TableHeader>RECIPIENT(S)</TableHeader>
                 <TableHeader>SENDER</TableHeader>
-                <TableHeader>LAST UPDATED</TableHeader>
+                <TableHeader>COMPLETED DATE</TableHeader>
                 <TableHeader>CREATE DATE</TableHeader>
               </TableRow>
             </TableHead>
@@ -117,7 +117,12 @@ const EnvelopeTable = ({
                     </Box>
                   </TableCell>
                   <TableCell>
-                    <Text variant="microcopy">{envelope.displayData.lastUpdated}</Text>
+                    <Text variant="microcopy" format={{ 
+                      color: envelope.displayData.completedDate === 'Pending' ? 'warning' : 
+                             envelope.displayData.completedDate === '—' ? 'medium' : 'default' 
+                    }}>
+                      {envelope.displayData.completedDate}
+                    </Text>
                   </TableCell>
                   <TableCell>
                     <Text variant="microcopy">{envelope.displayData.createDate}</Text>

@@ -1,4 +1,4 @@
-// src/app/extensions/components/EnvelopeTable.jsx
+// src/app/extensions/components/EnvelopeCardList.jsx
 // Table-based envelope display for better data viewing
 import React from "react";
 import {
@@ -96,7 +96,7 @@ const EnvelopeTable = ({
               <TableHeader>STATUS</TableHeader>
               <TableHeader>RECIPIENT(S)</TableHeader>
               <TableHeader>SENDER</TableHeader>
-              <TableHeader>LAST UPDATED</TableHeader>
+              <TableHeader>COMPLETED DATE</TableHeader>
               <TableHeader>CREATE DATE</TableHeader>
             </TableRow>
           </TableHead>
@@ -134,7 +134,12 @@ const EnvelopeTable = ({
                   </Box>
                 </TableCell>
                 <TableCell>
-                  <Text variant="microcopy">{envelope.displayData.lastUpdated}</Text>
+                  <Text variant="microcopy" format={{ 
+                    color: envelope.displayData.completedDate === 'Pending' ? 'warning' : 
+                           envelope.displayData.completedDate === '—' ? 'medium' : 'default' 
+                  }}>
+                    {envelope.displayData.completedDate}
+                  </Text>
                 </TableCell>
                 <TableCell>
                   <Text variant="microcopy">{envelope.displayData.createDate}</Text>

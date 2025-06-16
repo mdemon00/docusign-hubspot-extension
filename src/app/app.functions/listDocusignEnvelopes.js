@@ -188,7 +188,7 @@ exports.main = async (context) => {
             statusColor: getStatusColor(envelope.status),
             statusLabel: getStatusLabel(envelope.status),
             recipientsText: recipientsText,
-            lastUpdated: formatDate(envelope.lastModifiedDateTime),
+            completedDate: formatCompletedDate(envelope.completedDateTime, envelope.status), // NEW: Completed date
             createDate: formatDate(envelope.createdDateTime),
             senderDisplay: envelope.sender?.userName || 'Unknown'
           }
@@ -212,7 +212,7 @@ exports.main = async (context) => {
             statusColor: '#95a5a6',
             statusLabel: 'Unknown',
             recipientsText: 'Processing Error',
-            lastUpdated: formatDate(envelope.lastModifiedDateTime),
+            completedDate: 'Error', // NEW: Error state for completed date
             createDate: formatDate(envelope.createdDateTime),
             senderDisplay: 'Unknown'
           }
@@ -515,6 +515,48 @@ function getStatusLabel(status) {
   
   // Capitalize first letter
   return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+}
+
+/**
+ * NEW: Format completed date with status-aware display
+ */
+function formatCompletedDate(completedDateTime, status, userTimezone = 'America/Chicago') {
+  // If envelope is not completed, show appropriate status
+  if (!completedDateTime) {
+    const nonCompletedStatuses = ['sent', 'delivered', 'created', 'voided', 'declined'];
+    const currentStatus = status?.toLowerCase();
+    
+    if (nonCompletedStatuses.includes(currentStatus)) {
+      return 'Pending';
+    } else {
+      return '—';
+    }
+  }
+  
+  try {
+    const date = new Date(completedDateTime);
+    
+    if (isNaN(date.getTime())) {
+      return '—';
+    }
+    
+    // Format without timezone name first
+    const formatted = new Intl.DateTimeFormat('en-US', {
+      year: 'numeric',
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: userTimezone
+    }).format(date);
+    
+    // Always append CST regardless of daylight saving
+    return `${formatted} CST`;
+    
+  } catch (error) {
+    console.warn('Completed date formatting error:', error);
+    return '—';
+  }
 }
 
 /**
