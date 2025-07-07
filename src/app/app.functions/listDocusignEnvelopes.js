@@ -16,11 +16,12 @@ exports.main = async (context) => {
       fromDate = null,
       toDate = null,
       orderBy = 'last_modified',
-      order = 'desc'
+      order = 'desc',
+      companyId = null
     } = context.parameters;
 
     console.log('📋 Fetching DocuSign envelopes with parameters:', {
-      page, limit, status, searchTerm, fromDate, toDate, orderBy, order
+      page, limit, status, searchTerm, fromDate, toDate, orderBy, order, companyId
     });
 
     // Validate required parameters
@@ -39,8 +40,8 @@ exports.main = async (context) => {
       order: order
     });
 
-    // CRITICAL: Add include=recipients parameter to get recipient data
-    queryParams.append('include', 'recipients');
+    // CRITICAL: Add include=recipients and custom_fields parameters to get recipient data and custom fields
+    queryParams.append('include', 'recipients,custom_fields');
 
     // DocuSign requires either from_date OR envelope_ids/folder_ids/transaction_ids
     // If no fromDate provided, set a default to get recent envelopes (last 30 days)
@@ -70,11 +71,20 @@ exports.main = async (context) => {
       queryParams.append('search_text', searchTerm.trim());
     }
 
+    // Add custom field filter for company ID (if provided)
+    if (companyId) {
+      queryParams.append('custom_field', `hubspot_company_id:${companyId}`);
+      console.log(`🔍 Adding DocuSign custom field filter: hubspot_company_id:${companyId}`);
+    }
+
     // Construct API URL
     const apiUrl = `${baseUrl}/accounts/${accountId}/envelopes?${queryParams.toString()}`;
     
     console.log('🔗 DocuSign API URL:', apiUrl);
-    console.log('✅ INCLUDING recipients data in API call');
+    console.log('✅ INCLUDING recipients data and custom fields in API call');
+    if (companyId) {
+      console.log('🏢 Will filter by company ID:', companyId);
+    }
 
     // Make API request with enhanced error handling
     const response = await axios.get(apiUrl, {
@@ -121,9 +131,51 @@ exports.main = async (context) => {
     const data = response.data;
     
     console.log(`📦 Retrieved ${data.envelopes?.length || 0} envelopes`);
+    
+    // Debug: Log custom fields from first few envelopes
+    if (data.envelopes && data.envelopes.length > 0) {
+      console.log('🔍 DEBUG: Custom fields from first 3 envelopes:');
+      data.envelopes.slice(0, 3).forEach((env, idx) => {
+        console.log(`Envelope ${idx + 1} (${env.envelopeId}):`);
+        console.log('  customFields:', JSON.stringify(env.customFields, null, 2));
+        if (env.customFields && env.customFields.textCustomFields) {
+          env.customFields.textCustomFields.forEach(field => {
+            console.log(`  - ${field.name}: "${field.value}"`);
+          });
+        }
+      });
+    }
+
+    // Filter by company ID if specified
+    let filteredEnvelopes = data.envelopes || [];
+    if (companyId) {
+      console.log(`🔍 Filtering ${filteredEnvelopes.length} envelopes by company ID: ${companyId}`);
+      filteredEnvelopes = filteredEnvelopes.filter(envelope => {
+        // Check if envelope has custom fields with matching hubspot_company_id
+        if (envelope.customFields && envelope.customFields.textCustomFields) {
+          const companyField = envelope.customFields.textCustomFields.find(
+            field => field.name === 'hubspot_company_id' && 
+                    (field.value === companyId || field.value === String(companyId))
+          );
+          if (companyField) {
+            console.log(`✅ Envelope ${envelope.envelopeId} matches company ID ${companyId} (found: "${companyField.value}")`);
+            return true;
+          } else {
+            console.log(`❌ Envelope ${envelope.envelopeId} does not match company ID ${companyId}`);
+            envelope.customFields.textCustomFields.forEach(field => {
+              console.log(`  - Found field: ${field.name} = "${field.value}" (type: ${typeof field.value})`);
+            });
+          }
+        } else {
+          console.log(`❌ Envelope ${envelope.envelopeId} has no custom fields`);
+        }
+        return false;
+      });
+      console.log(`📊 After filtering: ${filteredEnvelopes.length} envelopes match company ID ${companyId}`);
+    }
 
     // Process envelope data with enhanced recipient handling
-    const processedEnvelopes = (data.envelopes || []).map(envelope => {
+    const processedEnvelopes = filteredEnvelopes.map(envelope => {
       try {
         // Enhanced recipient processing with detailed information
         const recipientsData = getRecipientsDetails(envelope);
@@ -220,8 +272,8 @@ exports.main = async (context) => {
       }
     });
 
-    // Calculate pagination metadata
-    const totalCount = parseInt(data.totalSetSize) || 0;
+    // Calculate pagination metadata - use filtered count if company filtering is applied
+    const totalCount = companyId ? filteredEnvelopes.length : (parseInt(data.totalSetSize) || 0);
     const totalPages = Math.ceil(totalCount / limit);
     const hasNextPage = page < totalPages;
     const hasPreviousPage = page > 1;
@@ -249,10 +301,22 @@ exports.main = async (context) => {
           fromDate: effectiveFromDate, // Return the actual date used
           toDate,
           orderBy,
-          order
+          order,
+          companyId
         },
         includeRecipients: true, // Flag indicating recipients are included
-        recipientEnhancements: true // Flag indicating enhanced recipient processing
+        recipientEnhancements: true, // Flag indicating enhanced recipient processing
+        // TEMPORARY DEBUG: Send raw API response
+        debug: {
+          rawApiResponse: {
+            totalSetSize: data.totalSetSize,
+            envelopesCount: data.envelopes?.length || 0,
+            firstEnvelopeCustomFields: data.envelopes?.[0]?.customFields || null,
+            allEnvelopesIds: (data.envelopes || []).map(env => env.envelopeId),
+            filteredEnvelopesCount: filteredEnvelopes.length,
+            originalEnvelopesCount: (data.envelopes || []).length
+          }
+        }
       },
       timestamp: Date.now()
     };

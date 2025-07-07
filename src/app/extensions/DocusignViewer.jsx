@@ -126,17 +126,55 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
 
     try {
       console.log('📋 Loading DocuSign envelopes...');
+      if (companyContext?.hasContext) {
+        console.log('🏢 Loading envelopes for company:', companyContext.companyId);
+      }
       const response = await runServerless({
         name: "listDocusignEnvelopes",
         parameters: {
           accessToken: authState.accessToken, baseUrl: authState.baseUrl,
           accountId: authState.account.accountId, page, limit: envelopesState.pagination.limit,
-          ...filters
+          ...filters,
+          companyId: companyContext?.hasContext ? companyContext.companyId : null
         }
       });
 
       if (response?.status === "SUCCESS") {
         const data = response.response.data;
+        
+        // Debug: Log filtering information from frontend
+        console.log('🔍 FRONTEND DEBUG: Envelope filtering info:');
+        console.log('  - Total envelopes received:', data.envelopes.length);
+        console.log('  - Company ID filter:', companyContext?.companyId);
+        console.log('  - Filters applied:', data.filters);
+        
+        // TEMPORARY DEBUG: Log raw API response data
+        if (data.debug && data.debug.rawApiResponse) {
+          console.log('🚨 RAW API DEBUG DATA:');
+          console.log('  - DocuSign API totalSetSize:', data.debug.rawApiResponse.totalSetSize);
+          console.log('  - DocuSign API envelopes count:', data.debug.rawApiResponse.envelopesCount);
+          console.log('  - Original envelopes before filtering:', data.debug.rawApiResponse.originalEnvelopesCount);
+          console.log('  - Filtered envelopes after company filter:', data.debug.rawApiResponse.filteredEnvelopesCount);
+          console.log('  - All envelope IDs:', data.debug.rawApiResponse.allEnvelopesIds);
+          console.log('  - First envelope custom fields:', data.debug.rawApiResponse.firstEnvelopeCustomFields);
+        }
+        
+        // Log first few envelopes custom fields
+        if (data.envelopes && data.envelopes.length > 0) {
+          console.log('🔍 FRONTEND DEBUG: First 3 envelope custom fields:');
+          data.envelopes.slice(0, 3).forEach((env, idx) => {
+            console.log(`  Envelope ${idx + 1} (${env.envelopeId}):`);
+            console.log('    customFields:', env.customFields);
+            if (env.customFields && env.customFields.textCustomFields) {
+              env.customFields.textCustomFields.forEach(field => {
+                console.log(`    - ${field.name}: "${field.value}"`);
+              });
+            } else {
+              console.log('    - No custom fields found');
+            }
+          });
+        }
+        
         setEnvelopesState(prev => ({
           ...prev, envelopes: data.envelopes, loading: false, error: null,
           pagination: { ...prev.pagination, ...data.pagination }
@@ -377,7 +415,10 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
         <Flex justify="space-between" align="center" marginBottom="medium">
           <Box>
             <Text variant="microcopy" format={{ color: "medium" }}>
-              Manage partnership agreements and envelopes
+              {companyContext?.hasContext 
+                ? `Manage partnership agreements and envelopes for this company`
+                : `Manage partnership agreements and envelopes`
+              }
             </Text>
           </Box>
           <Flex direction="column" align="end" gap="small">
@@ -415,7 +456,7 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
           <Tile marginBottom="large">
             <Flex justify="space-between" align="center" marginBottom="medium">
               <Text format={{ fontWeight: "bold" }}>
-                📊 Envelope Overview ({envelopesState.pagination.totalCount || 0})
+                📊 {companyContext?.hasContext ? 'Company' : 'All'} Envelopes ({envelopesState.pagination.totalCount || 0})
               </Text>
               {/* <Flex gap="small">
                 <Button
