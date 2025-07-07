@@ -71,10 +71,13 @@ exports.main = async (context) => {
       queryParams.append('search_text', searchTerm.trim());
     }
 
-    // Add custom field filter for company ID (if provided)
+    // Note: custom_field parameter causes 400 error, so we'll filter client-side
+    // and fetch more envelopes to ensure we get company matches
     if (companyId) {
-      queryParams.append('custom_field', `hubspot_company_id:${companyId}`);
-      console.log(`🔍 Adding DocuSign custom field filter: hubspot_company_id:${companyId}`);
+      console.log(`🔍 Will filter client-side by company ID: ${companyId}`);
+      // Fetch 100 envelopes when filtering by company to get more potential matches
+      queryParams.set('count', '100');
+      console.log(`📈 Increased API limit to 100 for company filtering`);
     }
 
     // Construct API URL
@@ -131,6 +134,7 @@ exports.main = async (context) => {
     const data = response.data;
     
     console.log(`📦 Retrieved ${data.envelopes?.length || 0} envelopes`);
+    console.log('🔍 DEBUG: Full DocuSign API response structure:', JSON.stringify(data, null, 2));
     
     // Debug: Log custom fields from first few envelopes
     if (data.envelopes && data.envelopes.length > 0) {
@@ -146,32 +150,39 @@ exports.main = async (context) => {
       });
     }
 
-    // Filter by company ID if specified
+    // Check if data has envelopes property
+    if (!data || typeof data !== 'object') {
+      console.error('❌ ERROR: DocuSign API returned invalid data:', data);
+      throw new Error('DocuSign API returned invalid response data');
+    }
+    
+    if (!data.envelopes) {
+      console.error('❌ ERROR: DocuSign API response missing envelopes property');
+      console.log('Available properties:', Object.keys(data));
+      throw new Error('DocuSign API response missing envelopes data');
+    }
+
+    // Client-side filtering by company ID (since API custom_field param doesn't work reliably)
     let filteredEnvelopes = data.envelopes || [];
     if (companyId) {
       console.log(`🔍 Filtering ${filteredEnvelopes.length} envelopes by company ID: ${companyId}`);
+      const originalCount = filteredEnvelopes.length;
+      
       filteredEnvelopes = filteredEnvelopes.filter(envelope => {
-        // Check if envelope has custom fields with matching hubspot_company_id
         if (envelope.customFields && envelope.customFields.textCustomFields) {
           const companyField = envelope.customFields.textCustomFields.find(
             field => field.name === 'hubspot_company_id' && 
                     (field.value === companyId || field.value === String(companyId))
           );
           if (companyField) {
-            console.log(`✅ Envelope ${envelope.envelopeId} matches company ID ${companyId} (found: "${companyField.value}")`);
+            console.log(`✅ Envelope ${envelope.envelopeId} matches company ID ${companyId}`);
             return true;
-          } else {
-            console.log(`❌ Envelope ${envelope.envelopeId} does not match company ID ${companyId}`);
-            envelope.customFields.textCustomFields.forEach(field => {
-              console.log(`  - Found field: ${field.name} = "${field.value}" (type: ${typeof field.value})`);
-            });
           }
-        } else {
-          console.log(`❌ Envelope ${envelope.envelopeId} has no custom fields`);
         }
         return false;
       });
-      console.log(`📊 After filtering: ${filteredEnvelopes.length} envelopes match company ID ${companyId}`);
+      
+      console.log(`📊 Filtered ${originalCount} → ${filteredEnvelopes.length} envelopes for company ${companyId}`);
     }
 
     // Process envelope data with enhanced recipient handling
@@ -272,7 +283,7 @@ exports.main = async (context) => {
       }
     });
 
-    // Calculate pagination metadata - use filtered count if company filtering is applied
+    // Calculate pagination metadata - when filtering by company, use filtered count
     const totalCount = companyId ? filteredEnvelopes.length : (parseInt(data.totalSetSize) || 0);
     const totalPages = Math.ceil(totalCount / limit);
     const hasNextPage = page < totalPages;

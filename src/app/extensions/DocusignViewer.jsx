@@ -140,7 +140,25 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
       });
 
       if (response?.status === "SUCCESS") {
-        const data = response.response.data;
+        // Handle different response structures
+        const data = response.response?.data || response.response;
+        
+        // Debug: Log full response structure first
+        console.log('🔍 FRONTEND DEBUG: Full API response:', response);
+        console.log('🔍 FRONTEND DEBUG: Response data structure:', data);
+        console.log('🔍 FRONTEND DEBUG: Response.response:', response.response);
+        console.log('🔍 FRONTEND DEBUG: Response.response keys:', response.response ? Object.keys(response.response) : 'no response.response');
+        
+        // Check if envelopes exist
+        if (!data || !data.envelopes) {
+          console.error('❌ FRONTEND ERROR: data.envelopes is undefined');
+          console.log('  - data:', data);
+          console.log('  - typeof data:', typeof data);
+          console.log('  - data keys:', data ? Object.keys(data) : 'data is null/undefined');
+          console.log('  - response.response:', response.response);
+          console.log('  - response.response keys:', response.response ? Object.keys(response.response) : 'no response.response');
+          throw new Error('Invalid API response structure: envelopes data missing');
+        }
         
         // Debug: Log filtering information from frontend
         console.log('🔍 FRONTEND DEBUG: Envelope filtering info:');
