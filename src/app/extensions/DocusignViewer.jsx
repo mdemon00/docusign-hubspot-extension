@@ -26,9 +26,9 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
     account: null, baseUrl: null, error: null, consentUrl: null
   });
 
-  // Envelopes State
+  // Envelopes State - separate data for sent and completed
   const [envelopesState, setEnvelopesState] = useState({
-    envelopes: [], loading: false, error: null,
+    sentEnvelopes: [], completedEnvelopes: [], loading: false, error: null,
     pagination: { currentPage: 1, totalPages: 0, totalCount: 0, limit: 10, hasNextPage: false, hasPreviousPage: false }
   });
 
@@ -36,7 +36,7 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
   const [uiState, setUiState] = useState({
     showAdvancedFilters: false,
     partnershipSending: false,
-    selectedView: "recent",
+    selectedView: "sent",
     showFilters: false,
     lastWebhookStatus: null // Track webhook status
   });
@@ -60,9 +60,9 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
 
   useEffect(() => {
     if (authState.isAuthenticated && authState.accessToken) {
-      loadEnvelopes();
+      loadAllEnvelopes();
     }
-  }, [authState.isAuthenticated, authState.accessToken, filters, envelopesState.pagination.currentPage]);
+  }, [authState.isAuthenticated, authState.accessToken, companyContext]);
 
   // Detect if we're in a company context
   const detectCompanyContext = () => {
@@ -121,89 +121,84 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
     }
   };
 
-  const loadEnvelopes = async (page = envelopesState.pagination.currentPage) => {
+  const loadAllEnvelopes = async () => {
     setEnvelopesState(prev => ({ ...prev, loading: true, error: null }));
 
     try {
-      console.log('📋 Loading DocuSign envelopes...');
+      console.log('📋 Loading all DocuSign envelopes (sent and completed)...');
       if (companyContext?.hasContext) {
         console.log('🏢 Loading envelopes for company:', companyContext.companyId);
       }
-      const response = await runServerless({
-        name: "listDocusignEnvelopes",
-        parameters: {
-          accessToken: authState.accessToken, baseUrl: authState.baseUrl,
-          accountId: authState.account.accountId, page, limit: envelopesState.pagination.limit,
-          ...filters,
-          companyId: companyContext?.hasContext ? companyContext.companyId : null
-        }
-      });
 
-      if (response?.status === "SUCCESS") {
-        // Handle different response structures
-        const data = response.response?.data || response.response;
-        
-        // Debug: Log full response structure first
-        console.log('🔍 FRONTEND DEBUG: Full API response:', response);
-        console.log('🔍 FRONTEND DEBUG: Response data structure:', data);
-        console.log('🔍 FRONTEND DEBUG: Response.response:', response.response);
-        console.log('🔍 FRONTEND DEBUG: Response.response keys:', response.response ? Object.keys(response.response) : 'no response.response');
-        
-        // Check if envelopes exist
-        if (!data || !data.envelopes) {
-          console.error('❌ FRONTEND ERROR: data.envelopes is undefined');
-          console.log('  - data:', data);
-          console.log('  - typeof data:', typeof data);
-          console.log('  - data keys:', data ? Object.keys(data) : 'data is null/undefined');
-          console.log('  - response.response:', response.response);
-          console.log('  - response.response keys:', response.response ? Object.keys(response.response) : 'no response.response');
-          throw new Error('Invalid API response structure: envelopes data missing');
-        }
-        
-        // Debug: Log filtering information from frontend
-        console.log('🔍 FRONTEND DEBUG: Envelope filtering info:');
-        console.log('  - Total envelopes received:', data.envelopes.length);
-        console.log('  - Company ID filter:', companyContext?.companyId);
-        console.log('  - Filters applied:', data.filters);
-        
-        // TEMPORARY DEBUG: Log raw API response data
-        if (data.debug && data.debug.rawApiResponse) {
-          console.log('🚨 RAW API DEBUG DATA:');
-          console.log('  - DocuSign API totalSetSize:', data.debug.rawApiResponse.totalSetSize);
-          console.log('  - DocuSign API envelopes count:', data.debug.rawApiResponse.envelopesCount);
-          console.log('  - Original envelopes before filtering:', data.debug.rawApiResponse.originalEnvelopesCount);
-          console.log('  - Filtered envelopes after company filter:', data.debug.rawApiResponse.filteredEnvelopesCount);
-          console.log('  - All envelope IDs:', data.debug.rawApiResponse.allEnvelopesIds);
-          console.log('  - First envelope custom fields:', data.debug.rawApiResponse.firstEnvelopeCustomFields);
-        }
-        
-        // Log first few envelopes custom fields
-        if (data.envelopes && data.envelopes.length > 0) {
-          console.log('🔍 FRONTEND DEBUG: First 3 envelope custom fields:');
-          data.envelopes.slice(0, 3).forEach((env, idx) => {
-            console.log(`  Envelope ${idx + 1} (${env.envelopeId}):`);
-            console.log('    customFields:', env.customFields);
-            if (env.customFields && env.customFields.textCustomFields) {
-              env.customFields.textCustomFields.forEach(field => {
-                console.log(`    - ${field.name}: "${field.value}"`);
-              });
-            } else {
-              console.log('    - No custom fields found');
-            }
-          });
-        }
-        
-        setEnvelopesState(prev => ({
-          ...prev, envelopes: data.envelopes, loading: false, error: null,
-          pagination: { ...prev.pagination, ...data.pagination }
-        }));
-        console.log('✅ Envelopes loaded successfully:', data.envelopes.length);
-      } else if (response?.status === "AUTH_ERROR") {
+      // Load both sent and completed envelopes in parallel
+      const [sentResponse, completedResponse] = await Promise.all([
+        runServerless({
+          name: "listDocusignEnvelopes",
+          parameters: {
+            accessToken: authState.accessToken, baseUrl: authState.baseUrl,
+            accountId: authState.account.accountId, page: 1, limit: 50,
+            status: 'sent',
+            companyId: companyContext?.hasContext ? companyContext.companyId : null
+          }
+        }),
+        runServerless({
+          name: "listDocusignEnvelopes",
+          parameters: {
+            accessToken: authState.accessToken, baseUrl: authState.baseUrl,
+            accountId: authState.account.accountId, page: 1, limit: 50,
+            status: 'completed',
+            companyId: companyContext?.hasContext ? companyContext.companyId : null
+          }
+        })
+      ]);
+
+      let sentEnvelopes = [];
+      let completedEnvelopes = [];
+      let hasError = false;
+      let errorMessage = '';
+
+      // Process sent envelopes
+      if (sentResponse?.status === "SUCCESS") {
+        const sentData = sentResponse.response?.data || sentResponse.response;
+        sentEnvelopes = sentData.envelopes || [];
+        console.log('✅ Sent envelopes loaded:', sentEnvelopes.length);
+      } else if (sentResponse?.status === "AUTH_ERROR") {
         setAuthState(prev => ({ ...prev, isAuthenticated: false, accessToken: null }));
         sendAlert({ message: "🔄 Session expired. Please re-authenticate.", variant: "warning" });
+        return;
       } else {
-        throw new Error(response?.response?.message || "Failed to load envelopes");
+        hasError = true;
+        errorMessage = sentResponse?.response?.message || "Failed to load sent envelopes";
       }
+
+      // Process completed envelopes
+      if (completedResponse?.status === "SUCCESS") {
+        const completedData = completedResponse.response?.data || completedResponse.response;
+        completedEnvelopes = completedData.envelopes || [];
+        console.log('✅ Completed envelopes loaded:', completedEnvelopes.length);
+      } else if (completedResponse?.status === "AUTH_ERROR") {
+        setAuthState(prev => ({ ...prev, isAuthenticated: false, accessToken: null }));
+        sendAlert({ message: "🔄 Session expired. Please re-authenticate.", variant: "warning" });
+        return;
+      } else {
+        hasError = true;
+        errorMessage = errorMessage || completedResponse?.response?.message || "Failed to load completed envelopes";
+      }
+
+      setEnvelopesState(prev => ({
+        ...prev,
+        sentEnvelopes,
+        completedEnvelopes,
+        loading: false,
+        error: hasError ? errorMessage : null
+      }));
+
+      console.log('✅ All envelopes loaded successfully:', {
+        sent: sentEnvelopes.length,
+        completed: completedEnvelopes.length,
+        total: sentEnvelopes.length + completedEnvelopes.length
+      });
+
     } catch (error) {
       console.error('❌ Failed to load envelopes:', error);
       setEnvelopesState(prev => ({ ...prev, loading: false, error: error.message }));
@@ -272,7 +267,7 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
           message: `✅ ${companyName} is ready for DocuSign creation${webhookStatus.sent ? ' (Workflow triggered)' : ' (Warning: Workflow notification failed)'}`,
           variant: "success"
         });
-        loadEnvelopes(1); // Refresh to show any new envelopes created by workflow
+        loadAllEnvelopes(); // Refresh to show any new envelopes created by workflow
 
       } else if (response?.status === "SUCCESS" && !responseData.docusignReady) {
         // VALIDATION FAILED - Missing required fields
@@ -316,21 +311,10 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
     }
   };
 
-  const handleFilterChange = (newFilters) => {
-    setFilters(prev => ({ ...prev, ...newFilters }));
-    setEnvelopesState(prev => ({ ...prev, pagination: { ...prev.pagination, currentPage: 1 } }));
-  };
-
   const handleQuickFilterChange = (filterType) => {
-    const quickFilterMap = {
-      recent: { status: 'all', orderBy: 'last_modified', order: 'desc' },
-      sent: { status: 'sent' },
-      completed: { status: 'completed' },
-      all: { status: 'all' }
-    };
-
+    // Simply switch the view - no API calls needed since data is already loaded
     setUiState(prev => ({ ...prev, selectedView: filterType }));
-    handleFilterChange(quickFilterMap[filterType] || {});
+    console.log('🔄 Switched to view:', filterType);
   };
 
   const renderWebhookStatus = () => {
@@ -474,7 +458,7 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
           <Tile marginBottom="large">
             <Flex justify="space-between" align="center" marginBottom="medium">
               <Text format={{ fontWeight: "bold" }}>
-                📊 {companyContext?.hasContext ? 'Company' : 'All'} Envelopes ({envelopesState.pagination.totalCount || 0})
+                📊 {companyContext?.hasContext ? 'Company' : 'All'} Envelopes ({(envelopesState.sentEnvelopes?.length || 0) + (envelopesState.completedEnvelopes?.length || 0)})
               </Text>
               {/* <Flex gap="small">
                 <Button
@@ -495,7 +479,8 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
             <QuickFilters
               selectedView={uiState.selectedView}
               onFilterChange={handleQuickFilterChange}
-              envelopes={envelopesState.envelopes}
+              sentEnvelopes={envelopesState.sentEnvelopes}
+              completedEnvelopes={envelopesState.completedEnvelopes}
             />
 
             {/* {uiState.showFilters && (
@@ -508,16 +493,14 @@ const DocusignViewerExtension = ({ context, runServerless, sendAlert }) => {
           </Tile>
 
           {/* Envelopes List */}
-          <EnvelopeTable
-            envelopes={envelopesState.envelopes}
-            loading={envelopesState.loading}
-            error={envelopesState.error}
-            pagination={envelopesState.pagination}
-            onRefresh={() => loadEnvelopes(1)}
-            onPageChange={(newPage) => setEnvelopesState(prev => ({
-              ...prev, pagination: { ...prev.pagination, currentPage: newPage }
-            }))}
-          />
+          <Tile>
+            <EnvelopeTable
+              envelopes={uiState.selectedView === 'sent' ? envelopesState.sentEnvelopes : envelopesState.completedEnvelopes}
+              loading={envelopesState.loading}
+              error={envelopesState.error}
+              onRefresh={loadAllEnvelopes}
+            />
+          </Tile>
 
           {/* Help Footer */}
           <Tile marginTop="large">

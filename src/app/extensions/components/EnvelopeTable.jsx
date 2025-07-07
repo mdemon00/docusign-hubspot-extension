@@ -13,10 +13,7 @@ const EnvelopeTable = ({
   envelopes, 
   loading, 
   error, 
-  onRefresh, 
-  onSendPartnership, 
-  partnershipSending = false,
-  companyContext = null 
+  onRefresh
 }) => {
   if (loading) {
     return (
@@ -39,32 +36,16 @@ const EnvelopeTable = ({
 
   return (
     <Box>
-      <Flex justify="space-between" align="center" marginBottom="small">
+      <Flex justify="space-between" align="center" marginBottom="medium">
         <Text format={{ fontWeight: "bold" }}>
           📋 {envelopes?.length || 0} envelope{(envelopes?.length || 0) !== 1 ? 's' : ''}
         </Text>
-        <Flex gap="small">
-          {/* Partnership Send Button - only show if we have company context */}
-          {companyContext && (
-            <Button 
-              variant="primary" 
-              size="xs" 
-              onClick={() => onSendPartnership(companyContext.companyId)}
-              disabled={partnershipSending}
-            >
-              {partnershipSending ? '📤 Sending...' : '📝 Send Partnership Agreement'}
-            </Button>
-          )}
-          <Button variant="secondary" size="xs" onClick={onRefresh}>🔄 Refresh</Button>
-        </Flex>
+        <Button variant="secondary" size="xs" onClick={onRefresh}>🔄 Refresh</Button>
       </Flex>
 
       {!envelopes?.length ? (
-        <Box padding="large" style={{ textAlign: 'center' }}>
+        <Box padding="medium" style={{ textAlign: 'center' }}>
           <Text variant="microcopy" format={{ color: 'medium' }}>📭 No envelopes found</Text>
-          <Box marginTop="small">
-            <Button variant="secondary" size="xs" onClick={onRefresh}>🔄 Refresh</Button>
-          </Box>
         </Box>
       ) : (
         <>
