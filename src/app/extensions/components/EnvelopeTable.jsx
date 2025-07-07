@@ -36,19 +36,19 @@ const EnvelopeTable = ({
 
   return (
     <Box>
-      <Flex justify="space-between" align="center" marginBottom="medium">
+      {/* <Flex justify="space-between" align="center" marginBottom="large" gap="medium">
         <Text format={{ fontWeight: "bold" }}>
           📋 {envelopes?.length || 0} envelope{(envelopes?.length || 0) !== 1 ? 's' : ''}
         </Text>
         <Button variant="secondary" size="xs" onClick={onRefresh}>🔄 Refresh</Button>
-      </Flex>
+      </Flex> */}
 
       {!envelopes?.length ? (
-        <Box padding="medium" style={{ textAlign: 'center' }}>
+        <Box padding="medium" style={{ textAlign: 'center' }} marginTop="medium">
           <Text variant="microcopy" format={{ color: 'medium' }}>📭 No envelopes found</Text>
         </Box>
       ) : (
-        <>
+        <Box marginTop="medium">
           <Table>
             <TableHead>
               <TableRow>
@@ -118,7 +118,7 @@ const EnvelopeTable = ({
               Showing {envelopes.length} envelope{envelopes.length !== 1 ? 's' : ''} with detailed recipient information
             </Text>
           </Box>
-        </>
+        </Box>
       )}
     </Box>
   );
