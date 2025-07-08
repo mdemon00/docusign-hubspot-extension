@@ -1,0 +1,148 @@
+{
+  "project": "DocuSign HubSpot Integration - OnBehalfOf Investigation",
+  "date": "2025-01-08",
+  "status": "Investigation Complete - Reply-to Solution Implemented",
+  "client": "John Creedon / UpEquity",
+  
+  "problem_statement": {
+    "issue": "DocuSign emails coming from 'John Creedon via DocuSign' instead of company owner",
+    "goal": "Change sender to company owner email for each partnership agreement",
+    "current_behavior": "All DocuSign envelopes show John as sender regardless of company owner"
+  },
+  
+  "investigation_summary": {
+    "attempted_solution": "DocuSign onBehalfOf parameter",
+    "root_cause": "onBehalfOf requires exact email match in DocuSign account with proper permissions",
+    "key_findings": [
+      "andrew@upequity.com doesn't exist in DocuSign account",
+      "andrew.yeakey@upequity.com exists but has 'DocuSign Sender' as primary profile (lacks permissions)",
+      "jeff@upequity.com exists as 'Account Administrator' but onBehalfOf still didn't work",
+      "onBehalfOf may have limitations with template-based envelopes",
+      "All 50 users were checked - many have DS Admin in groups but wrong primary profile"
+    ]
+  },
+  
+  "current_implementation": {
+    "file": "/home/user/Downloads/Happy Agency/docusign-hubspot-extension/hubspot_workflow_custom_code.js",
+    "working_solution": "emailSettings with replyEmailAddressOverride",
+    "status": "Functional - replies go to company owner",
+    "limitation": "Sender still shows as 'John Creedon via DocuSign'"
+  },
+  
+  "technical_details": {
+    "docusign_account": {
+      "account_id": "a2e01f4f-b2ad-4ed6-a9d7-8ec195a85a5d",
+      "account_name": "UpEquity",
+      "base_uri": "https://na3.docusign.net",
+      "total_users": 50,
+      "ds_admin_users": 50,
+      "active_users": "Multiple including jeff@upequity.com, andrew.yeakey@upequity.com"
+    },
+    "api_integration": {
+      "auth_method": "JWT",
+      "integration_key": "Provided via env var",
+      "user_id": "John Creedon (6717103e-13de-4e45-8ede-b63cb8cc52e1)",
+      "permissions": "Account-Wide Rights, Send On Behalf Of Rights (API) enabled"
+    },
+    "templates": {
+      "Silver": "04c93d91-cbbd-4032-9f84-0f7879b46c05",
+      "Gold": "0aefb289-cf0f-4f87-9615-259fdacaf710",
+      "Bronze": "51b8968d-05ea-4130-9ad5-9544b84f61c8"
+    }
+  },
+  
+  "tested_approaches": [
+    {
+      "approach": "onBehalfOf with non-existent user",
+      "test_email": "andrew@upequity.com",
+      "result": "Failed - user doesn't exist",
+      "debug_output": "User andrew@upequity.com exists in account: false"
+    },
+    {
+      "approach": "onBehalfOf with existing user (wrong permissions)",
+      "test_email": "andrew.yeakey@upequity.com", 
+      "result": "Failed - primary profile is 'DocuSign Sender'",
+      "debug_output": "Permission profile: DocuSign Sender, allowSendOnBehalfOf: not set"
+    },
+    {
+      "approach": "onBehalfOf with Account Administrator",
+      "test_email": "jeff@upequity.com",
+      "result": "Failed - still shows John as sender",
+      "debug_output": "Permission profile: Account Administrator, onBehalfOf set correctly but actual sender = john.creedon@upequity.com"
+    },
+    {
+      "approach": "emailSettings replyEmailAddressOverride",
+      "implementation": "Fallback solution implemented",
+      "result": "Success - replies go to company owner",
+      "limitation": "Sender name unchanged"
+    }
+  ],
+  
+  "code_changes": {
+    "input_field_added": "companyOwner",
+    "debugging_added": [
+      "User existence check",
+      "Permission profile analysis", 
+      "DS Admin user listing",
+      "Envelope sender verification"
+    ],
+    "fallback_implemented": "emailSettings with replyEmailAddressOverride and replyEmailNameOverride"
+  },
+  
+  "future_options_if_onbehalfof_still_wanted": {
+    "option_1": {
+      "name": "Add Company Owners as DocuSign Users",
+      "description": "Add each company owner as user with DS Admin permissions",
+      "time_estimate": "4-6 hours",
+      "cost": "Additional DocuSign licenses",
+      "pros": "Full sender change, professional appearance",
+      "cons": "License costs"
+    },
+    "option_2": {
+      "name": "Use Existing Admin Users", 
+      "description": "Map company owners to existing admin users",
+      "time_estimate": "1-2 hours",
+      "pros": "No new licenses",
+      "cons": "Sender name won't match actual company owner"
+    },
+    "option_3": {
+      "name": "Generic System User",
+      "description": "Create partnerships@upequity.com for all partnerships",
+      "time_estimate": "2-3 hours", 
+      "pros": "Single license, consistent",
+      "cons": "Not personalized"
+    },
+    "option_4": {
+      "name": "DocuSign Enterprise Features",
+      "description": "Research advanced sender delegation features",
+      "time_estimate": "3-4 hours",
+      "pros": "Might work as intended",
+      "cons": "May require plan upgrade"
+    }
+  },
+  
+  "recommendation": {
+    "primary": "Keep current reply-to solution - achieves business goal",
+    "if_onbehalfof_required": "Option 1 (Add company owners as users) for true personalization",
+    "rationale": "Reply-to solution works, is cost-effective, and solves the communication routing problem"
+  },
+  
+  "key_learnings": {
+    "docusign_limitations": [
+      "onBehalfOf requires users to exist in same account",
+      "Primary permission profile matters more than group membership", 
+      "Template-based envelopes may have additional onBehalfOf limitations",
+      "Account Administrator level permissions may not be sufficient"
+    ],
+    "debugging_insights": [
+      "User API returns 50 users, all appear in DS Admin group query",
+      "Permission profile vs group membership discrepancy",
+      "emailSettings provides reliable fallback for reply routing"
+    ]
+  },
+  
+  "contact_for_continuation": {
+    "instruction": "If John wants to proceed with full onBehalfOf implementation, reference this JSON file and the investigation can continue from where it left off",
+    "next_steps": "Choose from the 4 future options and implement accordingly"
+  }
+}

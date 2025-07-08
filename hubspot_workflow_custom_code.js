@@ -62,6 +62,9 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
     const emailSubject = event.inputFields?.emailSubject || `Please sign this document - ${partnershipLevel || 'Default'} Agreement`;
     const emailMessage = event.inputFields?.emailMessage || `Please review and sign this ${partnershipLevel || 'Default'} Agreement.`;
     const companyId = event.inputFields?.companyId;
+    const companyOwner = event.inputFields?.companyOwner;
+    
+    logs.push(`DEBUG: companyOwner = "${companyOwner}" (type: ${typeof companyOwner})`);
 
     // Check if company ID exists
     if (!companyId) {
@@ -79,6 +82,7 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
     logs.push(`Partnership Level: ${partnershipLevel || 'Not specified'}`);
     logs.push(`Company ID: ${companyId}`);
     logs.push(`Recipient: ${recipientName} <${recipientEmail}>`);
+    logs.push(`Company Owner: ${companyOwner || 'Not specified'}`);
 
     // Generate JWT and get access token
     try {
@@ -101,7 +105,6 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
         );
         
         logs.push('Access token obtained successfully');
-        logs.push(`Token response: ${JSON.stringify(response.data, null, 2)}`);
         accessToken = response.data.access_token;
         
         // Make a separate call to get user information and accounts
@@ -113,7 +116,7 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
             }
           });
           
-          logs.push(`User info response: ${JSON.stringify(userInfoResponse.data, null, 2)}`);
+          logs.push(`Found ${userInfoResponse.data.accounts?.length || 0} accounts`);
           
           if (userInfoResponse.data.accounts && userInfoResponse.data.accounts.length > 0) {
             logs.push(`Found ${userInfoResponse.data.accounts.length} accounts in user info`);
@@ -313,14 +316,92 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
         status: 'sent'
       };
 
+      // Add onBehalfOf if company owner is provided
+      if (companyOwner) {
+        // First, check if the user exists in the account
+        try {
+          logs.push(`DEBUG: Fetching all users in account...`);
+          const usersResponse = await docusignClient.get(`/accounts/${accountId}/users`);
+          const users = usersResponse.data.users || [];
+          
+          // Also check admin users specifically
+          try {
+            const adminUsersResponse = await docusignClient.get(`/accounts/${accountId}/users?permission_profile_name=DS Admin`);
+            const adminUsers = adminUsersResponse.data.users || [];
+            logs.push(`DEBUG: Found ${adminUsers.length} DS Admin users`);
+            adminUsers.forEach((user, index) => {
+              logs.push(`  Admin ${index + 1}. ${user.email} (${user.firstName} ${user.lastName})`);
+            });
+          } catch (adminError) {
+            logs.push(`DEBUG: Could not fetch admin users: ${adminError.message}`);
+          }
+          
+          logs.push(`DEBUG: Found ${users.length} users in account:`);
+          users.forEach((user, index) => {
+            logs.push(`  ${index + 1}. ${user.email} (${user.firstName} ${user.lastName}) - Status: ${user.userStatus}`);
+          });
+          
+          const targetUser = users.find(user => user.email === companyOwner);
+          const userExists = !!targetUser;
+          logs.push(`DEBUG: User ${companyOwner} exists in account: ${userExists}`);
+          
+          if (userExists) {
+            // Check user permissions for onBehalfOf
+            try {
+              logs.push(`DEBUG: Checking permissions for ${companyOwner}...`);
+              const userDetailsResponse = await docusignClient.get(`/accounts/${accountId}/users/${targetUser.userId}`);
+              const userSettings = userDetailsResponse.data;
+              
+              logs.push(`DEBUG: User status: ${userSettings.userStatus}`);
+              logs.push(`DEBUG: Permission profile: ${userSettings.permissionProfileName || 'not set'}`);
+              logs.push(`DEBUG: allowSendOnBehalfOf: ${userSettings.allowSendOnBehalfOf || 'not set'}`);
+              logs.push(`DEBUG: canSendEnvelope: ${userSettings.canSendEnvelope || 'not set'}`);
+              
+              // Check if user has multiple group memberships
+              if (userSettings.groupList && userSettings.groupList.length > 0) {
+                logs.push(`DEBUG: User groups: ${userSettings.groupList.map(g => g.groupName).join(', ')}`);
+              }
+              
+              // Force onBehalfOf since user has DS Admin group (even if primary profile lacks permission)
+              envelopeDefinition.onBehalfOf = companyOwner;
+              logs.push(`DEBUG: onBehalfOf set to: ${companyOwner} (has DS Admin group)`);
+              
+            } catch (permError) {
+              logs.push(`DEBUG: Failed to check permissions: ${permError.message}`);
+              // Still try onBehalfOf
+              envelopeDefinition.onBehalfOf = companyOwner;
+              logs.push(`DEBUG: onBehalfOf set to: ${companyOwner} (despite permission check failure)`);
+            }
+          } else {
+            logs.push(`DEBUG: User ${companyOwner} not found - onBehalfOf will be ignored`);
+          }
+        } catch (userCheckError) {
+          logs.push(`DEBUG: Failed to check users: ${userCheckError.message}`);
+          // Still try onBehalfOf in case the API call failed
+          envelopeDefinition.onBehalfOf = companyOwner;
+          logs.push(`DEBUG: onBehalfOf set to: ${companyOwner} (despite check failure)`);
+        }
+        
+        // Alternative: Use email settings to customize sender appearance
+        envelopeDefinition.emailSettings = {
+          replyEmailAddressOverride: companyOwner,
+          replyEmailNameOverride: event.inputFields?.companyOwnerName || 'Company Owner'
+        };
+        logs.push(`DEBUG: Also set email settings for: ${companyOwner}`);
+      } else {
+        logs.push('DEBUG: No companyOwner - using default sender');
+      }
+
       logs.push(`Sending envelope to DocuSign account ID: ${accountId}`);
       logs.push(`URL: POST /accounts/${accountId}/envelopes`);
       logs.push(`Template ID being used: ${templateId}`);
       logs.push(`Recipient: ${recipientName} <${recipientEmail}>`);
       logs.push(`Role name: Partner Authorized Signer`);
       logs.push(`Number of text tabs: ${textTabs.length}`);
+      logs.push(`DEBUG: onBehalfOf in envelope = ${envelopeDefinition.onBehalfOf || 'NOT SET'}`);
       
       try {
+        logs.push(`Making DocuSign API call...`);
         const response = await docusignClient.post(`/accounts/${accountId}/envelopes`, envelopeDefinition);
         
         const envelopeId = response.data.envelopeId;
@@ -328,6 +409,26 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
 
         logs.push(`DocuSign envelope created: ${envelopeId}`);
         logs.push(`Envelope status: ${envelopeStatus}`);
+        
+        // Check if sender info is in response
+        if (response.data.sender) {
+          logs.push(`DEBUG: Response sender = ${response.data.sender.email || 'no email'}`);
+        } else {
+          logs.push(`DEBUG: No sender info in response`);
+        }
+        
+        // Get envelope details to verify the actual sender
+        try {
+          const envelopeDetails = await docusignClient.get(`/accounts/${accountId}/envelopes/${envelopeId}`);
+          logs.push(`DEBUG: Actual sender = ${envelopeDetails.data.sender?.email || 'not found'}`);
+        } catch (detailsError) {
+          logs.push(`DEBUG: Failed to get sender: ${detailsError.message}`);
+        }
+        
+        // Verify onBehalfOf was processed
+        if (companyOwner) {
+          logs.push(`DEBUG: onBehalfOf requested for: ${companyOwner}`);
+        }
 
         // Return success
         return callback({
@@ -338,7 +439,8 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
             templateUsed: templateName,
             templateId: templateId,
             companyId: companyId,
-            message: `DocuSign envelope sent to ${recipientName}`
+            message: `DocuSign envelope sent to ${recipientName}`,
+            logs: logs.join('\n')
           }
         });
       } catch (envelopeError) {
