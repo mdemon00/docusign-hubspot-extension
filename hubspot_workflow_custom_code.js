@@ -63,8 +63,6 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
     const emailMessage = event.inputFields?.emailMessage || `Please review and sign this ${partnershipLevel || 'Default'} Agreement.`;
     const companyId = event.inputFields?.companyId;
     const companyOwner = event.inputFields?.companyOwner;
-    
-    logs.push(`DEBUG: companyOwner = "${companyOwner}" (type: ${typeof companyOwner})`);
 
     // Check if company ID exists
     if (!companyId) {
@@ -82,7 +80,6 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
     logs.push(`Partnership Level: ${partnershipLevel || 'Not specified'}`);
     logs.push(`Company ID: ${companyId}`);
     logs.push(`Recipient: ${recipientName} <${recipientEmail}>`);
-    logs.push(`Company Owner: ${companyOwner || 'Not specified'}`);
 
     // Generate JWT and get access token
     try {
@@ -108,7 +105,6 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
         accessToken = response.data.access_token;
         
         // Make a separate call to get user information and accounts
-        logs.push('Fetching user information to get account details');
         try {
           const userInfoResponse = await axios.get('https://account.docusign.com/oauth/userinfo', {
             headers: {
@@ -116,22 +112,13 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
             }
           });
           
-          logs.push(`Found ${userInfoResponse.data.accounts?.length || 0} accounts`);
-          
           if (userInfoResponse.data.accounts && userInfoResponse.data.accounts.length > 0) {
-            logs.push(`Found ${userInfoResponse.data.accounts.length} accounts in user info`);
-            
-            // Log all accounts for debugging
-            userInfoResponse.data.accounts.forEach((acc, idx) => {
-              logs.push(`Account #${idx+1}: ID=${acc.account_id}, Name=${acc.account_name}, IsDefault=${acc.is_default || false}`);
-            });
             
             // Try to find default account first, then fall back to first account
             const defaultAccount = userInfoResponse.data.accounts.find(acc => acc.is_default) || userInfoResponse.data.accounts[0];
             
             // Use the account ID from user info response
             accountId = defaultAccount.account_id;
-            logs.push(`Using account ID from user info: ${accountId}`);
             
             // Get base URL from account and append the REST API path
             if (defaultAccount.base_uri) {
@@ -145,13 +132,10 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
                   baseUrl = baseUrl + '/restapi/v2.1';
                 }
               }
-              
-              logs.push(`Using API URL: ${baseUrl}`);
             } else {
               baseUrl = 'https://na4.docusign.net/restapi/v2.1';
             }
           } else {
-            logs.push('WARNING: No accounts found in user info, checking direct account status');
             // Try making a direct call to check account status as a last resort
             try {
               const accountsResponse = await axios.get('https://account.docusign.com/restapi/v2.1/accounts', {
@@ -159,33 +143,22 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
                   'Authorization': `Bearer ${accessToken}`
                 }
               });
-              logs.push(`Direct accounts response: ${JSON.stringify(accountsResponse.data, null, 2)}`);
               
               if (accountsResponse.data && accountsResponse.data.accounts && accountsResponse.data.accounts.length > 0) {
                 accountId = accountsResponse.data.accounts[0].id;
-                logs.push(`Using account ID from direct accounts call: ${accountId}`);
               }
             } catch (accountsError) {
-              logs.push(`Failed to get accounts directly: ${accountsError.message}`);
-              if (accountsError.response) {
-                logs.push(`Error response: ${JSON.stringify(accountsError.response.data, null, 2)}`);
-              }
+              // Fallback to default
             }
           }
         } catch (userInfoError) {
-          logs.push(`Failed to get user info: ${userInfoError.message}`);
-          if (userInfoError.response) {
-            logs.push(`Error response: ${JSON.stringify(userInfoError.response.data, null, 2)}`);
-          }
+          // Fallback to default
         }
         
         // If we still have no account information, try using a standard DocuSign API endpoint format
         if (!baseUrl) {
           baseUrl = 'https://demo.docusign.net/restapi/v2.1';  // Try demo environment
-          logs.push(`WARNING: No base URL found, using fallback URL: ${baseUrl}`);
         }
-        
-        logs.push(`Using DocuSign base URL: ${baseUrl}`);
       } catch (tokenError) {
         if (tokenError.response?.data?.error === 'consent_required') {
           logs.push('DocuSign JWT consent is required');
@@ -219,14 +192,12 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
 
       // Check if test mode is enabled
       const testMode = false;  // You can change this to event.inputFields?.testMode || false to make it dynamic
-      logs.push(`Test mode is ${testMode ? 'ENABLED' : 'DISABLED'}`);
 
       // Use hardcoded template ID based on test mode and partnership level
       if (testMode) {
         // For test mode, always use the test template
         templateId = "fb3fb6ac-0821-4b81-ae25-6e2ffd50791d";
         templateName = "[TESTING ONLY] UpEquity Silver Level Marketing and Program Agreement with Rev Share(1)";
-        logs.push(`Using test template with hardcoded ID: ${templateId}`);
       } else {
         // For non-test mode, use the production template IDs based on partnership level
         const templateIdMapping = {
@@ -248,17 +219,12 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
         if (partnershipLevel && templateIdMapping[partnershipLevel]) {
           templateId = templateIdMapping[partnershipLevel];
           templateName = templateNameMapping[partnershipLevel];
-          logs.push(`Using production template for ${partnershipLevel}: ${templateId}`);
-          logs.push(`Template name: ${templateName}`);
-        } else {
-          logs.push(`WARNING: Unknown partnership level: ${partnershipLevel}`);
         }
       }
 
       // If no template found, return an error
       if (!templateId) {
         const errorMessage = `No DocuSign template found for partnership level: ${partnershipLevel}`;
-        logs.push(`ERROR: ${errorMessage}`);
         
         return callback({
           outputFields: {
@@ -269,9 +235,6 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
           }
         });
       }
-
-      // The rest of the code will only execute if a template was found
-      logs.push(`Creating envelope using template: ${templateName}`);
 
       // Create standard text tabs (company name filling removed)
       const textTabs = [];
@@ -316,92 +279,22 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
         status: 'sent'
       };
 
-      // Add onBehalfOf if company owner is provided
+      // Add reply-to email settings if company owner is provided
       if (companyOwner) {
-        // First, check if the user exists in the account
-        try {
-          logs.push(`DEBUG: Fetching all users in account...`);
-          const usersResponse = await docusignClient.get(`/accounts/${accountId}/users`);
-          const users = usersResponse.data.users || [];
-          
-          // Also check admin users specifically
-          try {
-            const adminUsersResponse = await docusignClient.get(`/accounts/${accountId}/users?permission_profile_name=DS Admin`);
-            const adminUsers = adminUsersResponse.data.users || [];
-            logs.push(`DEBUG: Found ${adminUsers.length} DS Admin users`);
-            adminUsers.forEach((user, index) => {
-              logs.push(`  Admin ${index + 1}. ${user.email} (${user.firstName} ${user.lastName})`);
-            });
-          } catch (adminError) {
-            logs.push(`DEBUG: Could not fetch admin users: ${adminError.message}`);
-          }
-          
-          logs.push(`DEBUG: Found ${users.length} users in account:`);
-          users.forEach((user, index) => {
-            logs.push(`  ${index + 1}. ${user.email} (${user.firstName} ${user.lastName}) - Status: ${user.userStatus}`);
-          });
-          
-          const targetUser = users.find(user => user.email === companyOwner);
-          const userExists = !!targetUser;
-          logs.push(`DEBUG: User ${companyOwner} exists in account: ${userExists}`);
-          
-          if (userExists) {
-            // Check user permissions for onBehalfOf
-            try {
-              logs.push(`DEBUG: Checking permissions for ${companyOwner}...`);
-              const userDetailsResponse = await docusignClient.get(`/accounts/${accountId}/users/${targetUser.userId}`);
-              const userSettings = userDetailsResponse.data;
-              
-              logs.push(`DEBUG: User status: ${userSettings.userStatus}`);
-              logs.push(`DEBUG: Permission profile: ${userSettings.permissionProfileName || 'not set'}`);
-              logs.push(`DEBUG: allowSendOnBehalfOf: ${userSettings.allowSendOnBehalfOf || 'not set'}`);
-              logs.push(`DEBUG: canSendEnvelope: ${userSettings.canSendEnvelope || 'not set'}`);
-              
-              // Check if user has multiple group memberships
-              if (userSettings.groupList && userSettings.groupList.length > 0) {
-                logs.push(`DEBUG: User groups: ${userSettings.groupList.map(g => g.groupName).join(', ')}`);
-              }
-              
-              // Force onBehalfOf since user has DS Admin group (even if primary profile lacks permission)
-              envelopeDefinition.onBehalfOf = companyOwner;
-              logs.push(`DEBUG: onBehalfOf set to: ${companyOwner} (has DS Admin group)`);
-              
-            } catch (permError) {
-              logs.push(`DEBUG: Failed to check permissions: ${permError.message}`);
-              // Still try onBehalfOf
-              envelopeDefinition.onBehalfOf = companyOwner;
-              logs.push(`DEBUG: onBehalfOf set to: ${companyOwner} (despite permission check failure)`);
-            }
-          } else {
-            logs.push(`DEBUG: User ${companyOwner} not found - onBehalfOf will be ignored`);
-          }
-        } catch (userCheckError) {
-          logs.push(`DEBUG: Failed to check users: ${userCheckError.message}`);
-          // Still try onBehalfOf in case the API call failed
-          envelopeDefinition.onBehalfOf = companyOwner;
-          logs.push(`DEBUG: onBehalfOf set to: ${companyOwner} (despite check failure)`);
-        }
-        
-        // Alternative: Use email settings to customize sender appearance
         envelopeDefinition.emailSettings = {
           replyEmailAddressOverride: companyOwner,
           replyEmailNameOverride: event.inputFields?.companyOwnerName || 'Company Owner'
         };
-        logs.push(`DEBUG: Also set email settings for: ${companyOwner}`);
-      } else {
-        logs.push('DEBUG: No companyOwner - using default sender');
       }
 
       logs.push(`Sending envelope to DocuSign account ID: ${accountId}`);
-      logs.push(`URL: POST /accounts/${accountId}/envelopes`);
       logs.push(`Template ID being used: ${templateId}`);
       logs.push(`Recipient: ${recipientName} <${recipientEmail}>`);
-      logs.push(`Role name: Partner Authorized Signer`);
-      logs.push(`Number of text tabs: ${textTabs.length}`);
-      logs.push(`DEBUG: onBehalfOf in envelope = ${envelopeDefinition.onBehalfOf || 'NOT SET'}`);
+      if (companyOwner) {
+        logs.push(`Reply-to email set to: ${companyOwner}`);
+      }
       
       try {
-        logs.push(`Making DocuSign API call...`);
         const response = await docusignClient.post(`/accounts/${accountId}/envelopes`, envelopeDefinition);
         
         const envelopeId = response.data.envelopeId;
@@ -409,26 +302,6 @@ sY2QDyitfI5gTtKiwlQI6b8WdZuz3NcAJqXX8GSGZAOxu3Y3ArzPuXHBJUlxyfLm
 
         logs.push(`DocuSign envelope created: ${envelopeId}`);
         logs.push(`Envelope status: ${envelopeStatus}`);
-        
-        // Check if sender info is in response
-        if (response.data.sender) {
-          logs.push(`DEBUG: Response sender = ${response.data.sender.email || 'no email'}`);
-        } else {
-          logs.push(`DEBUG: No sender info in response`);
-        }
-        
-        // Get envelope details to verify the actual sender
-        try {
-          const envelopeDetails = await docusignClient.get(`/accounts/${accountId}/envelopes/${envelopeId}`);
-          logs.push(`DEBUG: Actual sender = ${envelopeDetails.data.sender?.email || 'not found'}`);
-        } catch (detailsError) {
-          logs.push(`DEBUG: Failed to get sender: ${detailsError.message}`);
-        }
-        
-        // Verify onBehalfOf was processed
-        if (companyOwner) {
-          logs.push(`DEBUG: onBehalfOf requested for: ${companyOwner}`);
-        }
 
         // Return success
         return callback({
